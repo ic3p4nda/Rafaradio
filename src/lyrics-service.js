@@ -1,7 +1,6 @@
 const https = require('https');
 
-// Store the API key (will be set from main process)
-let geniusApiKey = null;
+let geniusApiKey = 'vLNng_CrttymeOjLeJALhdwIT0dIPADzPZqeeoZ4BH-tBGBTkGcJXomysT-LWo53';
 
 function setGeniusApiKey(apiKey) {
   geniusApiKey = apiKey;
@@ -165,5 +164,4 @@ async function fetchFromAZLyrics(title, artist) {
 module.exports = {
   fetchLyrics,
   setGeniusApiKey,
-  parseLRC,
 };
