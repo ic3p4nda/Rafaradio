@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+package-lock.json
+yarn.lock
+
+# Build outputs
+dist/
+build/
+out/
+
+# Electron
+release/
+*.dmg
+*.exe
+*.zip
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Temporary files
+.env.local
+temp/
+cache/

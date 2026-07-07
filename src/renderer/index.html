@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Player</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- Custom titlebar, replaces the native OS one (frame: false in main.js) -->
+  <div class="titlebar">
+    <div class="titlebar-drag">
+      <span class="titlebar-dot"></span>
+      <span class="titlebar-label">now playing</span>
+    </div>
+    <div class="titlebar-controls">
+      <button id="minBtn" class="win-btn" aria-label="Minimize">&#8211;</button>
+      <button id="maxBtn" class="win-btn" aria-label="Fullscreen">&#9723;</button>
+      <button id="closeBtn" class="win-btn win-btn-close" aria-label="Close">&#10005;</button>
+    </div>
+  </div>
+
+  <div class="app">
+    <div id="coverBackdrop" class="cover-backdrop"></div>
+    <canvas id="particles"></canvas>
+
+    <button id="playlistToggle" class="playlist-toggle">Library</button>
+    <button id="cloudToggle" class="cloud-toggle">Cloud</button>
+    <button id="lyricsToggle" class="lyrics-toggle">Lyrics</button>
+
+    <aside id="lyricsPanel" class="lyrics-panel">
+      <div class="lyrics-header">
+        <span>Lyrics Stage</span>
+        <div class="lyrics-controls">
+          <button id="lyricsRefresh" class="lyrics-btn" title="Fetch lyrics">🔄</button>
+          <button id="lyricsClose" class="lyrics-btn" title="Close">✕</button>
+        </div>
+      </div>
+      <div id="lyricsStatus" class="lyrics-status">No lyrics loaded</div>
+      <canvas id="lyricsCanvas" class="lyrics-canvas"></canvas>
+    </aside>
+
+    <aside id="playlistPanel" class="playlist-panel">
+      <div class="playlist-header">Library</div>
+      <ul id="playlist"></ul>
+    </aside>
+
+    <aside id="cloudPanel" class="cloud-panel">
+      <div class="playlist-header">Search YouTube Music</div>
+      <form id="cloudSearchForm" class="cloud-search-form">
+        <input id="cloudSearchInput" type="text" placeholder="Song or artist..." autocomplete="off" />
+      </form>
+      <div id="cloudStatus" class="cloud-status"></div>
+      <ul id="cloudResults"></ul>
+    </aside>
+
+    <div class="deck">
+      <div class="disc-wrap">
+        <div id="disc" class="disc">
+          <img id="discArt" class="disc-art" alt="" />
+        </div>
+      </div>
+
+      <div class="deck-main">
+        <div class="track-info">
+          <div class="track-text">
+            <div id="trackTitle">No track loaded</div>
+            <div id="trackArtist"></div>
+          </div>
+          <div id="trackTime">0:00 / 0:00</div>
+        </div>
+
+        <input type="range" id="seekBar" value="0" min="0" max="100" step="0.1" />
+
+        <div class="controls">
+          <button id="prevBtn" class="ctrl-btn" aria-label="Previous">&#9198;</button>
+          <button id="playBtn" class="ctrl-btn ctrl-btn-main" aria-label="Play">&#9654;</button>
+          <button id="nextBtn" class="ctrl-btn" aria-label="Next">&#9197;</button>
+
+          <div class="volume-wrap">
+            <span class="volume-icon">&#9834;</span>
+            <input type="range" id="volumeBar" min="0" max="1" step="0.01" value="1" />
+          </div>
+
+          <button id="openBtn" class="add-btn">+ Add Files</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <audio id="audio"></audio>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "../../node_modules/three/build/three.module.min.js",
+      "three/addons/": "../../node_modules/three/examples/jsm/"
+    }
+  }
+  </script>
+  <script type="module" src="renderer.js"></script>
+</body>
+</html>

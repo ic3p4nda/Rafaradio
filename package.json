@@ -1,0 +1,22 @@
+{
+  "name": "mineradio-clone",
+  "version": "0.1.0",
+  "description": "Custom visual music player, inspired by Mineradio",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^43.0.0"
+  },
+  "dependencies": {
+    "three": "^0.185.1",
+    "music-metadata": "^11.13.0",
+    "ytmusic-api": "^5.3.1",
+    "yt-dlp-wrap": "^2.3.12"
+  },
+  "allowScripts": {
+    "electron@31.7.7": true,
+    "@biomejs/biome@1.8.3": true
+  }
+}
