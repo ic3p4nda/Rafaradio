@@ -17,47 +17,56 @@
   padding: 0;
 }
 
-html, body {
+html {
+  background: transparent;
+  height: 100%;
+}
+
+body {
   height: 100%;
   background: var(--void);
   color: var(--text);
   font-family: 'Inter', sans-serif;
   overflow: hidden;
   user-select: none;
+  transition: border-radius 0.3s ease, border 0.3s ease;
+}
+
+body.desktop-mode {
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+body.desktop-mode.fullscreen {
+  border-radius: 0;
+  border: none;
+}
+
+@media (display-mode: fullscreen) {
+  body.desktop-mode {
+    border-radius: 0 !important;
+    border: none !important;
+  }
 }
 
 .titlebar {
   height: 36px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 0 8px 0 14px;
-  background: var(--panel-solid);
-  border-bottom: 1px solid var(--border);
-  -webkit-app-region: drag; /* whole bar is draggable by default */
-  position: relative;
-  z-index: 10;
+  justify-content: flex-end;
+  padding: 0 8px;
+  background: transparent;
+  border-bottom: none;
+  -webkit-app-region: drag;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
 }
 
 .titlebar-drag {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.titlebar-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--gold);
-  box-shadow: 0 0 6px var(--gold);
-}
-
-.titlebar-label {
-  font-size: 11px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--text-dim);
+  display: none !important;
 }
 
 .titlebar-controls {
@@ -89,10 +98,11 @@ html, body {
 /* ---------- App shell ---------- */
 .app {
   position: relative;
-  height: calc(100vh - 36px);
+  height: 100vh;
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
+  padding-top: 36px;
 }
 
 #coverBackdrop {
@@ -163,10 +173,11 @@ html, body {
 /* ---------- Center Navigation Pill ---------- */
 .nav-pill {
   position: absolute;
-  top: 18px;
+  top: 48px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 10;
+  z-index: 1005;
+  -webkit-app-region: no-drag;
   background: rgba(12, 12, 18, 0.45);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 999px;
@@ -226,9 +237,9 @@ html, body {
 
 .playlist-panel {
   position: absolute;
-  top: 0;
+  top: 36px;
   right: 0;
-  height: 100%;
+  height: calc(100% - 36px);
   width: 300px;
   background: var(--panel-solid);
   border-left: 1px solid var(--border);
@@ -248,9 +259,9 @@ html, body {
 /* ---------- Cloud search (YouTube Music) — mirrors the library panel, left side ---------- */
 .cloud-panel {
   position: absolute;
-  top: 0;
+  top: 36px;
   left: 0;
-  height: 100%;
+  height: calc(100% - 36px);
   width: 320px;
   background: var(--panel-solid);
   border-right: 1px solid var(--border);
@@ -1012,12 +1023,12 @@ input[type="range"]::-webkit-slider-thumb {
 /* ---------- Lyrics stage panel ---------- */
 .lyrics-panel {
   position: absolute;
-  top: 0;
+  top: 36px;
   left: 0;
   right: 0;
   bottom: 0;
   width: 100%;
-  height: 100%;
+  height: calc(100% - 36px);
   background: rgba(5, 5, 10, 0.95);
   backdrop-filter: blur(8px);
   transform: translateY(100%);
@@ -1085,9 +1096,9 @@ input[type="range"]::-webkit-slider-thumb {
 /* ---------- Settings panel ---------- */
 .settings-panel {
   position: absolute;
-  top: 0;
+  top: 36px;
   left: 0;
-  height: 100%;
+  height: calc(100% - 36px);
   width: 320px;
   background: var(--panel-solid);
   border-right: 1px solid var(--border);
@@ -1260,4 +1271,36 @@ input[type="range"]::-webkit-slider-thumb {
 .settings-panel.open .settings-content,
 .lyrics-panel.open .lyrics-canvas {
   transition-delay: 0.12s;
+}
+
+/* ---------- Lyrics indicators on list rows ---------- */
+.lyrics-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 8px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 1px 4px;
+  border-radius: 3px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.lyrics-badge.loaded {
+  background: rgba(250, 201, 0, 0.15);
+  color: var(--gold);
+  border: 1px solid rgba(250, 201, 0, 0.3);
+}
+
+.lyrics-badge.loading {
+  background: rgba(0, 138, 255, 0.1);
+  color: var(--blue);
+  border: 1px solid rgba(0, 138, 255, 0.2);
+}
+
+.lyrics-badge.none {
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.05);
 }

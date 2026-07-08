@@ -134,6 +134,7 @@ class LyricsSyncController {
   
   updateLyricDisplay() {
     if (!this.audio || !this.lyrics.length) return;
+    if (window.isDraggingSeekBar) return;
 
     const currentTime = this.audio.currentTime || 0;
     const leadTime = this.syncThreshold;
@@ -161,6 +162,7 @@ class LyricsSyncController {
   }
   
   seek(time) {
+    if (window.isDraggingSeekBar) return;
     // Reset when seeking to recalculate current lyric
     this.currentIndex = -1;
     this.updateLyricDisplay();

@@ -16,14 +16,15 @@ export function normalizeLyricLines(lyricsArray) {
 
   return lyricsArray
     .map((line) => {
-      if (typeof line === 'string') return line.trim();
+      if (typeof line === 'string') return { text: line.trim(), time: null };
       if (line && typeof line === 'object') {
         const text = line.text ?? line.lyric ?? line.content ?? line.line ?? '';
-        return typeof text === 'string' ? text.trim() : '';
+        const time = typeof line.time === 'number' ? line.time : null;
+        return { text: typeof text === 'string' ? text.trim() : '', time };
       }
-      return '';
+      return { text: '', time: null };
     })
-    .filter((line) => line.length > 0);
+    .filter((line) => line.text.length > 0);
 }
 
 // How many lines of context to show above/below the current line.
@@ -365,7 +366,7 @@ class LyricsVisualizer {
     if (!text) return null;
 
     const isCurrent = index === this.currentLyricIndex;
-    const { texture, aspect } = this.buildLineTexture(text, { current: isCurrent });
+    const { texture, aspect } = this.buildLineTexture(text.text, { current: isCurrent });
 
     const material = new THREE.SpriteMaterial({
       map: texture,
@@ -449,7 +450,7 @@ class LyricsVisualizer {
       // current line (or vice versa), rebuild its texture at the right
       // size/brightness for crisp readability.
       if (sprite.userData.isCurrentTexture !== isCurrent) {
-        const { texture, aspect } = this.buildLineTexture(this.lyricsLines[i], { current: isCurrent });
+        const { texture, aspect } = this.buildLineTexture(this.lyricsLines[i].text, { current: isCurrent });
         sprite.material.map?.dispose();
         sprite.material.map = texture;
         sprite.material.needsUpdate = true;
@@ -495,7 +496,7 @@ class LyricsVisualizer {
     // Force reconstruct all loaded sprite textures to match the new scale, font, and glow colors
     for (const [i, sprite] of Array.from(this.lineMeshes.entries())) {
       const isCurrent = i === this.currentLyricIndex;
-      const { texture, aspect } = this.buildLineTexture(this.lyricsLines[i], { current: isCurrent });
+      const { texture, aspect } = this.buildLineTexture(this.lyricsLines[i].text, { current: isCurrent });
       sprite.material.map?.dispose();
       sprite.material.map = texture;
       sprite.material.needsUpdate = true;
@@ -510,6 +511,14 @@ class LyricsVisualizer {
     const bass = this.bassAvg || 0;
     const bounceMult = this.textSettings.bounceIntensity !== undefined ? this.textSettings.bounceIntensity : 1.0;
 
+    // Get current audio element info for timing and pause state
+    const audioEl = document.getElementById('audio');
+    const currentTime = audioEl ? audioEl.currentTime : 0;
+    const isPaused = audioEl ? audioEl.paused : true;
+
+    // Smooth color change when paused vs playing (gray out when paused)
+    const targetColor = isPaused ? new THREE.Color(0x777777) : new THREE.Color(0xffffff);
+
     // Bounce the entire lyrics stage group up and down vertically with the bass beat!
     // STAGE_ANCHOR is (0, 0, 0). This models a real physics subwoofer rattle.
     const targetGroupY = STAGE_ANCHOR.y + bass * 14.0 * bounceMult;
@@ -518,7 +527,26 @@ class LyricsVisualizer {
     for (const sprite of this.lineMeshes.values()) {
       const ud = sprite.userData;
 
-      sprite.material.opacity += (ud.targetOpacity - sprite.material.opacity) * 0.12;
+      // Dynamic lead-time opacity constraint:
+      // "Make it so that the lyrics only starts showing like 5 secs before it actually starts"
+      const lyricObj = this.lyricsLines[ud.index];
+      let finalTargetOpacity = ud.targetOpacity;
+
+      if (lyricObj && lyricObj.time !== null) {
+        const timeDiff = lyricObj.time - currentTime;
+        if (timeDiff > 5.0) {
+          finalTargetOpacity = 0;
+        } else if (timeDiff > 0) {
+          // Smoothly fade in over the 5 seconds leading up to the lyric
+          const tValue = 1.0 - (timeDiff / 5.0); // 0 at 5s before, 1 at start
+          finalTargetOpacity = ud.targetOpacity * tValue;
+        }
+      }
+
+      // Smoothly transition color (gray out when paused)
+      sprite.material.color.lerp(targetColor, 0.1);
+
+      sprite.material.opacity += (finalTargetOpacity - sprite.material.opacity) * 0.12;
       sprite.position.y += (ud.targetY - sprite.position.y) * 0.14;
       sprite.position.z += ((ud.isCurrent ? 0 : -8) - sprite.position.z) * 0.12;
 

@@ -8,7 +8,8 @@ const YTMusic = require('ytmusic-api');
 const YTDlpWrap = require('yt-dlp-wrap').default;
 const { fetchLyrics } = require('./lyrics-service');
 
-const binDir = path.join(__dirname, '..', 'bin');
+const userDataPath = app.getPath('userData');
+const binDir = path.join(userDataPath, 'bin');
 const ytDlpPath = path.join(binDir, process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp');
 const ytDlpWrap = new YTDlpWrap(ytDlpPath);
 
@@ -39,7 +40,7 @@ function createWindow() {
     height: 750,
     minWidth: 820,
     minHeight: 560,
-    backgroundColor: '#05050a',
+    transparent: true,
     frame: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -49,6 +50,19 @@ function createWindow() {
   });
 
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+
+  mainWindow.on('enter-full-screen', () => {
+    mainWindow.webContents.send('window-fullscreen-state', true);
+  });
+  mainWindow.on('leave-full-screen', () => {
+    mainWindow.webContents.send('window-fullscreen-state', false);
+  });
+  mainWindow.on('maximize', () => {
+    mainWindow.webContents.send('window-fullscreen-state', true);
+  });
+  mainWindow.on('unmaximize', () => {
+    mainWindow.webContents.send('window-fullscreen-state', false);
+  });
 
   // mainWindow.webContents.openDevTools();
 }
@@ -70,7 +84,11 @@ app.on('window-all-closed', () => {
 
 ipcMain.on('window-minimize', () => mainWindow.minimize());
 ipcMain.on('window-fullscreen-toggle', () => {
-  mainWindow.setFullScreen(!mainWindow.isFullScreen());
+  if (mainWindow.isMaximized()) {
+    mainWindow.unmaximize();
+  } else {
+    mainWindow.maximize();
+  }
 });
 ipcMain.on('window-close', () => mainWindow.close());
 

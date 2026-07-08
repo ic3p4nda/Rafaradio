@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { OrbitControls } from './vendor/OrbitControls.js';
 import LyricsVisualizer, { normalizeLyricLines } from './lyrics-visualizer.js';
 import LyricsSyncController from './lyrics-sync.js';
 
@@ -33,6 +33,181 @@ let playlists = {
 };
 let currentViewedPlaylist = null; // null means viewing the list of playlists
 let trackToAddToPlaylist = null; // track currently selected for "Add to Playlist" modal
+
+// Stream and Lyrics cache and background preloader
+const preloadedStreams = new Map(); // videoId -> Promise<streamInfo>
+const lyricsCache = new Map(); // trackKey -> { state: 'unloaded'|'loading'|'loaded'|'none', lines: [...] }
+
+function loadLyricsCacheFromStorage() {
+  const saved = localStorage.getItem('mine_player_lyrics_cache');
+  if (saved) {
+    try {
+      const parsed = JSON.parse(saved);
+      if (parsed && typeof parsed === 'object') {
+        Object.entries(parsed).forEach(([key, value]) => {
+          if (value && (value.state === 'loaded' || value.state === 'none')) {
+            lyricsCache.set(key, {
+              state: value.state,
+              lines: value.lines,
+              promise: Promise.resolve(value.lines)
+            });
+          }
+        });
+      }
+    } catch (err) {
+      console.warn('Failed to parse saved lyrics cache:', err);
+    }
+  }
+}
+
+function saveLyricsCacheToStorage() {
+  const obj = {};
+  lyricsCache.forEach((value, key) => {
+    if (value.state === 'loaded' || value.state === 'none') {
+      obj[key] = {
+        state: value.state,
+        lines: value.lines
+      };
+    }
+  });
+  localStorage.setItem('mine_player_lyrics_cache', JSON.stringify(obj));
+}
+
+const prefetchQueue = [];
+let activePrefetches = 0;
+const MAX_CONCURRENT_PREFETCHES = 2;
+
+function getTrackKey(track) {
+  if (!track) return '';
+  if (track.type === 'youtube') return 'yt:' + track.videoId;
+  return 'local:' + (track.path || track.name);
+}
+
+function queuePrefetch(track) {
+  if (!track || track.type !== 'youtube') return;
+  const videoId = track.videoId;
+
+  if (preloadedStreams.has(videoId)) {
+    return; // Already preloading or preloaded
+  }
+
+  prefetchQueue.push(track);
+  processPrefetchQueue();
+}
+
+function processPrefetchQueue() {
+  if (activePrefetches >= MAX_CONCURRENT_PREFETCHES || prefetchQueue.length === 0) {
+    return;
+  }
+
+  const track = prefetchQueue.shift();
+  if (!track) return;
+
+  activePrefetches++;
+  const videoId = track.videoId;
+
+  const promise = window.api.youtubePrepareStream(videoId)
+    .then(result => {
+      activePrefetches--;
+      processPrefetchQueue();
+      return result;
+    })
+    .catch(err => {
+      activePrefetches--;
+      processPrefetchQueue();
+      return { error: err.message };
+    });
+
+  preloadedStreams.set(videoId, promise);
+}
+
+function preloadLyrics(track) {
+  if (!track) return Promise.resolve(null);
+  const key = getTrackKey(track);
+  if (lyricsCache.has(key)) {
+    return lyricsCache.get(key).promise;
+  }
+
+  updateTrackLyricsBadgeInUI(track, 'loading');
+
+  const promise = window.api.fetchLyrics(track.name, track.artist || '')
+    .then(lyrics => {
+      if (lyrics && lyrics.length > 0) {
+        lyricsCache.set(key, { state: 'loaded', lines: lyrics, promise });
+        updateTrackLyricsBadgeInUI(track, 'loaded');
+        saveLyricsCacheToStorage();
+        return lyrics;
+      } else {
+        lyricsCache.set(key, { state: 'none', lines: null, promise });
+        updateTrackLyricsBadgeInUI(track, 'none');
+        saveLyricsCacheToStorage();
+        return null;
+      }
+    })
+    .catch(err => {
+      lyricsCache.set(key, { state: 'none', lines: null, promise });
+      updateTrackLyricsBadgeInUI(track, 'none');
+      saveLyricsCacheToStorage();
+      return null;
+    });
+
+  lyricsCache.set(key, { state: 'loading', lines: null, promise });
+  return promise;
+}
+
+function updateTrackLyricsBadgeInUI(track, state) {
+  const key = getTrackKey(track);
+  const elements = document.querySelectorAll(`.playlist-track-row[data-track-key="${key}"]`);
+  elements.forEach(row => {
+    let badge = row.querySelector('.lyrics-badge');
+    if (!badge) {
+      const titleContainer = row.querySelector('.playlist-track-title');
+      if (titleContainer) {
+        badge = document.createElement('span');
+        badge.className = 'lyrics-badge';
+        titleContainer.appendChild(badge);
+      }
+    }
+    if (badge) {
+      badge.className = `lyrics-badge ${state}`;
+      if (state === 'loaded') {
+        badge.textContent = 'Lyrics';
+        badge.title = 'Lyrics available';
+      } else if (state === 'loading') {
+        badge.textContent = '...';
+        badge.title = 'Checking lyrics...';
+      } else if (state === 'none') {
+        badge.textContent = 'No Lyrics';
+        badge.title = 'No lyrics found';
+      }
+    }
+  });
+}
+
+function preloadStreamsForPlaylist(tracks) {
+  if (!tracks) return;
+  tracks.forEach(track => {
+    if (track.type === 'youtube') {
+      queuePrefetch(track);
+    }
+    preloadLyrics(track);
+  });
+}
+
+function preloadNextTracks(currIndex) {
+  for (let i = 1; i <= 5; i++) {
+    const nextIdx = (currIndex + i) % playlist.length;
+    if (nextIdx >= 0 && nextIdx < playlist.length) {
+      const track = playlist[nextIdx];
+      if (track) {
+        if (track.type === 'youtube') {
+          queuePrefetch(track);
+        }
+        preloadLyrics(track);
+      }
+    }
+  }
+}
 
 // ---------- Elements ----------
 const audio = document.getElementById('audio');
@@ -269,11 +444,58 @@ function initLyricsVisualizer() {
 
 async function fetchAndDisplayLyrics(track) {
   try {
-    lyricsStatus.textContent = 'Fetching lyrics...';
-    console.log('Starting lyrics fetch for:', track.name, track.artist);
+    const key = getTrackKey(track);
+    let cached = lyricsCache.get(key);
 
-    const lyrics = await window.api.fetchLyrics(track.name, track.artist || '');
-    console.log('Received lyrics:', lyrics?.length, 'lines');
+    // Clear current lyrics first so there is no residual display from the previous song.
+    if (lyricsVisualizer) {
+      await lyricsVisualizer.displayLyrics([]);
+    }
+    if (lyricsSyncController) {
+      lyricsSyncController.setLyrics([]);
+    }
+
+    if (cached && cached.state === 'loaded') {
+      const lyrics = cached.lines;
+      const visualizerReady = initLyricsVisualizer();
+      const displayLyrics = normalizeLyricLines(lyrics);
+
+      console.log('Displaying stored lyrics from cache...');
+      if (lyricsVisualizer) {
+        try {
+          await lyricsVisualizer.displayLyrics(displayLyrics);
+        } catch (vizErr) {
+          console.error('Visualizer error:', vizErr);
+        }
+      }
+
+      if (lyricsSyncController) {
+        lyricsSyncController.setLyrics(lyrics);
+      }
+
+      const statusText = `${lyrics.length} lines loaded ✓`;
+      lyricsStatus.textContent = statusText;
+
+      if (!audio.paused && lyricsSyncController) {
+        lyricsSyncController.start();
+      }
+      return;
+    } else if (cached && cached.state === 'none') {
+      lyricsStatus.textContent = 'No lyrics found';
+      return;
+    }
+
+    lyricsStatus.textContent = 'Fetching lyrics...';
+    console.log('Starting lyrics fetch or awaiting active prefetch for:', track.name, track.artist);
+
+    let lyricsPromise;
+    if (cached && cached.promise) {
+      lyricsPromise = cached.promise;
+    } else {
+      lyricsPromise = preloadLyrics(track);
+    }
+
+    const lyrics = await lyricsPromise;
 
     if (!lyrics || lyrics.length === 0) {
       lyricsStatus.textContent = 'No lyrics found';
@@ -297,16 +519,7 @@ async function fetchAndDisplayLyrics(track) {
       lyricsSyncController.setLyrics(lyrics);
     }
 
-    const isDemoLyrics = displayLyrics.some((line) =>
-      line.includes('Lyrics could not be fetched') ||
-      line.includes('watch the rhythm')
-    );
-
-    const statusText = isDemoLyrics
-      ? `${lyrics.length} demo lines (for testing)`
-      : `${lyrics.length} lines loaded ✓`;
-
-    console.log('Status:', statusText);
+    const statusText = `${lyrics.length} lines loaded ✓`;
     lyricsStatus.textContent = statusText;
 
     if (!audio.paused && lyricsSyncController) {
@@ -650,6 +863,8 @@ function renderPlaylistDetail() {
   tracks.forEach((track, i) => {
     const li = document.createElement('li');
     li.className = 'playlist-track-row';
+    const key = getTrackKey(track);
+    li.setAttribute('data-track-key', key);
     
     const isPlaying = currentIndex !== -1 && playlist[currentIndex] && isSameTrack(track, playlist[currentIndex]);
     if (isPlaying) {
@@ -659,11 +874,26 @@ function renderPlaylistDetail() {
     const isFav = playlists["Favorites"].some(t => isSameTrack(t, track));
     const favHeartClass = isFav ? 'playlist-track-action-btn fav active' : 'playlist-track-action-btn fav';
     
+    let badgeHtml = '';
+    const cached = lyricsCache.get(key);
+    if (cached) {
+      if (cached.state === 'loaded') {
+        badgeHtml = `<span class="lyrics-badge loaded" title="Lyrics available">Lyrics</span>`;
+      } else if (cached.state === 'loading') {
+        badgeHtml = `<span class="lyrics-badge loading" title="Checking lyrics...">...</span>`;
+      } else if (cached.state === 'none') {
+        badgeHtml = `<span class="lyrics-badge none" title="No lyrics found">No Lyrics</span>`;
+      }
+    } else {
+      badgeHtml = `<span class="lyrics-badge loading" title="Checking lyrics...">...</span>`;
+      preloadLyrics(track);
+    }
+
     li.innerHTML = `
       <div class="playlist-track-info">
         <span class="playlist-track-num">${isPlaying ? SVG_ICONS.play : i + 1}</span>
         <div class="playlist-track-details">
-          <span class="playlist-track-title">${escapeHtml(track.name)}</span>
+          <span class="playlist-track-title">${escapeHtml(track.name)} ${badgeHtml}</span>
           <span class="playlist-track-artist">${escapeHtml(track.artist || 'Unknown')}</span>
         </div>
       </div>
@@ -878,6 +1108,9 @@ importPlaylistSave.addEventListener('click', async () => {
 
   savePlaylistsToStorage();
 
+  // Start background stream & lyrics preloading for all tracks in this imported playlist
+  preloadStreamsForPlaylist(result.tracks);
+
   // Reset UI
   importPlaylistInput.value = '';
   importPlaylistForm.style.display = 'none';
@@ -973,8 +1206,15 @@ async function loadTrack(index, autoplay = true) {
 
   if (lyricsSyncController) {
     lyricsSyncController.stop();
+    lyricsSyncController.setLyrics([]);
+  }
+  if (lyricsVisualizer) {
+    lyricsVisualizer.displayLyrics([]);
   }
   lyricsStatus.textContent = 'No lyrics loaded';
+
+  // Trigger background preloading for the next few tracks immediately
+  preloadNextTracks(currentIndex);
 
   if (track.type === 'local') {
     if (track.file) {
@@ -1019,11 +1259,19 @@ async function loadTrack(index, autoplay = true) {
       coverBackdrop.classList.remove('visible');
     }
 
-    const result = await window.api.youtubePrepareStream(track.videoId);
+    // Retrieve from preloaded stream cache or start preloading now
+    let streamPromise = preloadedStreams.get(track.videoId);
+    if (!streamPromise) {
+      streamPromise = window.api.youtubePrepareStream(track.videoId);
+      preloadedStreams.set(track.videoId, streamPromise);
+    }
+
+    const result = await streamPromise;
 
     if (trackLoadId !== activeTrackLoadId) return;
 
     if (result.error) {
+      preloadedStreams.delete(track.videoId); // Allow retry if it failed
       trackTitle.textContent = `Error — ${result.error}`;
       return;
     }
@@ -1084,6 +1332,9 @@ async function applyLocalMetadata(track) {
 
   if (meta.title) track.name = meta.title;
   if (meta.artist) track.artist = meta.artist;
+
+  savePlaylistsToStorage();
+  savePlaySession();
 
   trackTitle.textContent = meta.title || track.name;
   trackArtist.textContent = meta.artist || '';
@@ -1279,10 +1530,15 @@ audio.addEventListener('error', () => {
 });
 
 // ---------- Seek bar ----------
+window.isDraggingSeekBar = false;
+
 let lastSavedTime = -1;
 audio.addEventListener('timeupdate', () => {
   if (!audio.duration) return;
-  seekBar.value = (audio.currentTime / audio.duration) * 100;
+  // Only update seekbar position if the user isn't actively dragging it
+  if (!window.isDraggingSeekBar) {
+    seekBar.value = (audio.currentTime / audio.duration) * 100;
+  }
   trackTime.textContent = `${formatTime(audio.currentTime)} / ${formatTime(audio.duration)}`;
 
   const roundedTime = Math.floor(audio.currentTime);
@@ -1290,6 +1546,22 @@ audio.addEventListener('timeupdate', () => {
     lastSavedTime = roundedTime;
     localStorage.setItem('mine_player_queue_current_time', audio.currentTime);
   }
+});
+
+seekBar.addEventListener('mousedown', () => {
+  window.isDraggingSeekBar = true;
+});
+seekBar.addEventListener('touchstart', () => {
+  window.isDraggingSeekBar = true;
+});
+window.addEventListener('mouseup', () => {
+  window.isDraggingSeekBar = false;
+});
+window.addEventListener('touchend', () => {
+  window.isDraggingSeekBar = false;
+});
+seekBar.addEventListener('change', () => {
+  window.isDraggingSeekBar = false;
 });
 
 seekBar.addEventListener('input', () => {
@@ -1542,7 +1814,21 @@ document.addEventListener('keydown', (e) => {
 });
 
 // ---------- Initialization ----------
+if (window.api) {
+  document.body.classList.add('desktop-mode');
+  if (window.api.onFullscreenState) {
+    window.api.onFullscreenState((isFullscreen) => {
+      if (isFullscreen) {
+        document.body.classList.add('fullscreen');
+      } else {
+        document.body.classList.remove('fullscreen');
+      }
+    });
+  }
+}
+
 loadPlaylistsFromStorage();
+loadLyricsCacheFromStorage();
 loadPlaySession();
 
 // Load volume preference
