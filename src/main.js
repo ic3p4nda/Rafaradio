@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const http = require('http');
 const https = require('https');
@@ -311,5 +311,266 @@ ipcMain.handle('youtube-import-playlist', async (event, playlistUrl) => {
     return {
       error: 'Could not fetch the playlist. Make sure the playlist is public or unlisted.'
     };
+  }
+});
+
+function getYouTubeApi(url, accessToken) {
+  return new Promise((resolve, reject) => {
+    const options = {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Accept': 'application/json'
+      }
+    };
+    https.get(url, options, (res) => {
+      let data = '';
+      res.on('data', (chunk) => data += chunk);
+      res.on('end', () => {
+        try {
+          const parsed = JSON.parse(data);
+          resolve({ statusCode: res.statusCode, data: parsed });
+        } catch (e) {
+          reject(e);
+        }
+      });
+    }).on('error', (err) => reject(err));
+  });
+}
+
+const OAUTH_LOOPBACK_PORT = 8721;
+
+function performGoogleOAuth() {
+  return new Promise((resolve, reject) => {
+    try {
+      let configPath;
+
+      // Dynamically checks if the app is packaged
+      if (app.isPackaged) {
+        // When built, files listed in extraResources go to the app's resources folder
+        configPath = path.join(process.resourcesPath, 'firebase-applet-config.json');
+      } else {
+        // In development, step back one folder from src/main.js to find the project root
+        configPath = path.join(__dirname, '..', 'firebase-applet-config.json');
+      }
+
+      console.log('Attempting to load configuration from:', configPath);
+
+      if (!fs.existsSync(configPath)) {
+        throw new Error(`Configuration file not found at path: ${configPath}`);
+      }
+      
+      const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      const clientId = config.oAuthClientId;
+
+      if (!clientId) {
+        throw new Error('OAuth Client ID missing in configuration.');
+      }
+
+      const redirectUri = `http://127.0.0.1:${OAUTH_LOOPBACK_PORT}/oauth-callback`;
+      const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` + new URLSearchParams({
+        client_id: clientId,
+        redirect_uri: redirectUri,
+        response_type: 'token',
+        scope: 'https://www.googleapis.com/auth/youtube.readonly',
+        prompt: 'consent'
+      }).toString();
+
+      let settled = false;
+      let timeoutHandle;
+
+      const server = http.createServer((req, res) => {
+        let parsedUrl;
+        try {
+          parsedUrl = new URL(req.url, `http://127.0.0.1:${OAUTH_LOOPBACK_PORT}`);
+        } catch (e) {
+          res.writeHead(400);
+          res.end();
+          return;
+        }
+
+        if (parsedUrl.pathname === '/oauth-callback') {
+          res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+          res.end(`<!DOCTYPE html>
+<html><body style="font-family: sans-serif; text-align:center; margin-top:80px;">
+  <p>Signing you in…</p>
+  <script>
+    var hash = window.location.hash.substring(1);
+    window.location.replace('/token?' + hash);
+  </script>
+</body></html>`);
+          return;
+        }
+
+        if (parsedUrl.pathname === '/token') {
+          const accessToken = parsedUrl.searchParams.get('access_token');
+          const error = parsedUrl.searchParams.get('error');
+
+          res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+          res.end(`<!DOCTYPE html>
+<html><body style="font-family: sans-serif; text-align:center; margin-top:80px;">
+  <h2>${accessToken ? 'Signed in!' : 'Sign-in failed'}</h2>
+  <p>You can close this tab and go back to the application.</p>
+</body></html>`);
+
+          cleanup();
+          if (accessToken) {
+            resolve(accessToken);
+          } else {
+            reject(new Error(error || 'No access token was returned.'));
+          }
+          return;
+        }
+
+        res.writeHead(404);
+        res.end();
+      });
+
+      function cleanup() {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeoutHandle);
+        server.close();
+      }
+
+      server.on('error', (err) => {
+        cleanup();
+        reject(err);
+      });
+
+      server.listen(OAUTH_LOOPBACK_PORT, '127.0.0.1', () => {
+        shell.openExternal(authUrl);
+      });
+
+      timeoutHandle = setTimeout(() => {
+        cleanup();
+        reject(new Error('Sign-in timed out.'));
+      }, 3 * 60 * 1000);
+
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+ipcMain.handle('youtube-import-liked', async (event, accessToken) => {
+  let tokenToUse = accessToken;
+
+  if (!tokenToUse) {
+    try {
+      tokenToUse = await performGoogleOAuth();
+    } catch (err) {
+      return { error: err.message || 'Authentication failed.' };
+    }
+  }
+
+  if (!tokenToUse) {
+    return { error: 'Unauthorized: Missing or invalid token.' };
+  }
+
+  try {
+    let playlistId = 'LM';
+    const tracks = [];
+    let nextPageToken = '';
+    let pagesFetched = 0;
+    const maxPages = 3;
+
+    while (pagesFetched < maxPages) {
+      const url = `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId=${playlistId}&maxResults=50${nextPageToken ? `&pageToken=${nextPageToken}` : ''}`;
+      const result = await getYouTubeApi(url, tokenToUse);
+
+      if (result.statusCode !== 200) {
+        break;
+      }
+
+      const items = result.data.items || [];
+      if (items.length === 0 && pagesFetched === 0) {
+        break;
+      }
+
+      for (const item of items) {
+        const snippet = item.snippet || {};
+        const resourceId = snippet.resourceId || {};
+        const videoId = resourceId.videoId;
+        if (!videoId) continue;
+
+        const title = snippet.title || 'Untitled Song';
+        const artist = snippet.videoOwnerChannelTitle || snippet.channelTitle || 'Unknown Artist';
+        const thumbnails = snippet.thumbnails || {};
+        const thumbnail = (thumbnails.high && thumbnails.high.url) || 
+                          (thumbnails.medium && thumbnails.medium.url) || 
+                          (thumbnails.default && thumbnails.default.url) || 
+                          `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+
+        tracks.push({
+          type: 'youtube',
+          videoId: videoId,
+          name: title,
+          artist: artist,
+          thumbnail: thumbnail
+        });
+      }
+
+      nextPageToken = result.data.nextPageToken;
+      pagesFetched++;
+      if (!nextPageToken) break;
+    }
+
+    if (tracks.length === 0) {
+      playlistId = 'LL';
+      nextPageToken = '';
+      pagesFetched = 0;
+
+      while (pagesFetched < maxPages) {
+        const url = `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId=${playlistId}&maxResults=50${nextPageToken ? `&pageToken=${nextPageToken}` : ''}`;
+        const result = await getYouTubeApi(url, tokenToUse);
+
+        if (result.statusCode !== 200) {
+          return { 
+            error: result.data.error ? result.data.error.message : 'Failed to retrieve liked songs from YouTube.' 
+          };
+        }
+
+        const items = result.data.items || [];
+        for (const item of items) {
+          const snippet = item.snippet || {};
+          const resourceId = snippet.resourceId || {};
+          const videoId = resourceId.videoId;
+          if (!videoId) continue;
+
+          const title = snippet.title || 'Untitled Song';
+          const artist = snippet.videoOwnerChannelTitle || snippet.channelTitle || 'Unknown Artist';
+          const thumbnails = snippet.thumbnails || {};
+          const thumbnail = (thumbnails.high && thumbnails.high.url) || 
+                            (thumbnails.medium && thumbnails.medium.url) || 
+                            (thumbnails.default && thumbnails.default.url) || 
+                            `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+
+          tracks.push({
+            type: 'youtube',
+            videoId: videoId,
+            name: title,
+            artist: artist,
+            thumbnail: thumbnail
+          });
+        }
+
+        nextPageToken = result.data.nextPageToken;
+        pagesFetched++;
+        if (!nextPageToken) break;
+      }
+    }
+
+    if (tracks.length === 0) {
+      return { error: 'No songs found in your Liked Songs playlist on YouTube.' };
+    }
+
+    return {
+      title: 'YouTube Liked Songs',
+      tracks: tracks
+    };
+
+  } catch (err) {
+    console.error('Liked songs import failed in main process:', err);
+    return { error: 'Internal error while fetching liked songs.' };
   }
 });

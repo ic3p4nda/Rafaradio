@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Player</title>
+  <title>RafaRadio</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -66,6 +66,10 @@
       <div id="playlistsListHeader" class="playlist-header">
         <span>Library</span>
         <div style="display: flex; gap: 8px; align-items: center;">
+          <button id="importLikedSongsBtn" class="playlist-create-btn" title="Import Liked Songs" style="display: flex; align-items: center; justify-content: center; gap: 4px; padding: 4px 8px; font-size: 11px;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display: inline-block;"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>
+            Liked Songs
+          </button>
           <button id="importPlaylistBtn" class="playlist-create-btn" title="Import YouTube Playlist" style="display: flex; align-items: center; justify-content: center;">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
           </button>
@@ -93,6 +97,18 @@
           <div class="new-playlist-actions">
             <button id="importPlaylistSave" class="playlist-form-btn save">Import</button>
             <button id="importPlaylistCancel" class="playlist-form-btn cancel">Cancel</button>
+          </div>
+        </div>
+
+        <!-- Import Liked Songs Form (hidden by default) -->
+        <div id="importLikedForm" class="new-playlist-form" style="display: none;">
+          <div id="importLikedPrompt" style="font-size: 11px; color: var(--text-dim); margin-bottom: 8px; line-height: 1.4;">
+            Import your LIKED SONGS from YouTube Music using secure Google OAuth.
+          </div>
+          <div id="importLikedStatus" style="font-size: 10px; color: var(--gold); margin-bottom: 8px; display: none; line-height: 1.4;">Connecting to YouTube... Please wait.</div>
+          <div class="new-playlist-actions">
+            <button id="importLikedAuthBtn" class="playlist-form-btn save" style="display: flex; align-items: center; justify-content: center; gap: 4px;">Sign in & Import</button>
+            <button id="importLikedCancel" class="playlist-form-btn cancel">Cancel</button>
           </div>
         </div>
 
@@ -274,6 +290,18 @@
             return await res.json();
           } catch (err) {
             return { error: 'Failed to import playlist.' };
+          }
+        },
+        youtubeImportLikedSongs: async (accessToken) => {
+          try {
+            const res = await fetch('/api/youtube-import-liked', {
+              headers: {
+                'Authorization': `Bearer ${accessToken}`
+              }
+            });
+            return await res.json();
+          } catch (err) {
+            return { error: 'Failed to import Liked Songs.' };
           }
         },
         fetchLyrics: async (title, artist) => {

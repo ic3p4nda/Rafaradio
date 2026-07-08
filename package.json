@@ -9,8 +9,11 @@
     "build": "electron-builder"
   },
   "build": {
-    "appId": "com.mineradio.player",
-    "productName": "MineRadioPlayer",
+    "appId": "com.RafaRadio",
+    "extraResources": [
+    "firebase-applet-config.json"
+    ],
+    "productName": "RafaRadio",
     "directories": {
       "output": "dist-installer"
     },
@@ -35,6 +38,7 @@
   },
   "dependencies": {
     "express": "^5.2.1",
+    "firebase": "^12.15.0",
     "music-metadata": "^11.13.0",
     "three": "^0.185.1",
     "yt-dlp-wrap": "^2.3.12",
@@ -43,6 +47,8 @@
   "allowScripts": {
     "electron@31.7.7": true,
     "@biomejs/biome@1.8.3": true,
-    "electron-winstaller@5.4.0": true
+    "electron-winstaller@5.4.0": true,
+    "@firebase/util@1.15.1": true,
+    "protobufjs@7.6.5": true
   }
 }

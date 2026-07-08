@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { OrbitControls } from './vendor/OrbitControls.js';
 import LyricsVisualizer, { normalizeLyricLines } from './lyrics-visualizer.js';
 import LyricsSyncController from './lyrics-sync.js';
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
+import { getAuth, signInWithPopup, GoogleAuthProvider } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js';
 
 // ---------- State ----------
 const SVG_ICONS = {
@@ -257,6 +259,13 @@ const importPlaylistInput = document.getElementById('importPlaylistInput');
 const importPlaylistStatus = document.getElementById('importPlaylistStatus');
 const importPlaylistSave = document.getElementById('importPlaylistSave');
 const importPlaylistCancel = document.getElementById('importPlaylistCancel');
+
+// Import Liked Songs elements
+const importLikedSongsBtn = document.getElementById('importLikedSongsBtn');
+const importLikedForm = document.getElementById('importLikedForm');
+const importLikedAuthBtn = document.getElementById('importLikedAuthBtn');
+const importLikedCancel = document.getElementById('importLikedCancel');
+const importLikedStatus = document.getElementById('importLikedStatus');
 
 const addActiveTrackBtn = document.getElementById('addActiveTrackBtn');
 const deletePlaylistBtn = document.getElementById('deletePlaylistBtn');
@@ -1044,6 +1053,132 @@ newPlaylistSave.addEventListener('click', () => {
 newPlaylistCancel.addEventListener('click', () => {
   newPlaylistInput.value = '';
   newPlaylistForm.style.display = 'none';
+});
+
+// ---------- YouTube Liked Songs (OAuth) Event Listeners ----------
+let firebaseAuth = null;
+let googleProvider = null;
+
+async function getFirebaseAuth() {
+  if (firebaseAuth) return firebaseAuth;
+  try {
+    const res = await fetch('/api/firebase-config');
+    if (!res.ok) throw new Error('Could not load Firebase configuration.');
+    const firebaseConfig = await res.json();
+    
+    const app = initializeApp(firebaseConfig);
+    firebaseAuth = getAuth(app);
+    
+    googleProvider = new GoogleAuthProvider();
+    googleProvider.addScope('https://www.googleapis.com/auth/youtube.readonly');
+    
+    return firebaseAuth;
+  } catch (err) {
+    console.error('Firebase initialization failed:', err);
+    throw err;
+  }
+}
+
+importLikedSongsBtn.addEventListener('click', () => {
+  const isFormOpen = importLikedForm.style.display === 'block';
+  importLikedForm.style.display = isFormOpen ? 'none' : 'block';
+  if (!isFormOpen) {
+    newPlaylistForm.style.display = 'none';
+    importPlaylistForm.style.display = 'none';
+  }
+});
+
+importLikedCancel.addEventListener('click', () => {
+  importLikedForm.style.display = 'none';
+  importLikedStatus.style.display = 'none';
+});
+
+importLikedAuthBtn.addEventListener('click', async () => {
+  importLikedStatus.textContent = 'Initializing connection... Please wait.';
+  importLikedStatus.style.display = 'block';
+  importLikedAuthBtn.disabled = true;
+  importLikedCancel.disabled = true;
+
+  try {
+    let response;
+    const isElectron = navigator.userAgent.toLowerCase().includes('electron');
+
+    if (isElectron) {
+      importLikedStatus.textContent = 'Opening Google Sign-in window...';
+      response = await window.api.youtubeImportLikedSongs();
+    } else {
+      const auth = await getFirebaseAuth();
+      
+      importLikedStatus.textContent = 'Opening Google Sign-in popup...';
+      
+      const result = await signInWithPopup(auth, googleProvider);
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      if (!credential || !credential.accessToken) {
+        throw new Error('Failed to obtain Google access token.');
+      }
+      
+      const accessToken = credential.accessToken;
+      importLikedStatus.textContent = 'Importing your Liked Songs from YouTube Music...';
+      
+      // Call our API bridge
+      response = await window.api.youtubeImportLikedSongs(accessToken);
+    }
+    
+    importLikedAuthBtn.disabled = false;
+    importLikedCancel.disabled = false;
+
+    if (response.error) {
+      importLikedStatus.textContent = `Error: ${response.error}`;
+      return;
+    }
+
+    if (!response.tracks || response.tracks.length === 0) {
+      importLikedStatus.textContent = 'Error: No valid songs found in your Liked Songs playlist.';
+      return;
+    }
+
+    // Generate unique name
+    let playlistName = response.title || 'YouTube Liked Songs';
+    let counter = 1;
+    while (playlists[playlistName]) {
+      playlistName = `${response.title || 'YouTube Liked Songs'} (${counter})`;
+      counter++;
+    }
+
+    // Create playlist and push tracks
+    playlists[playlistName] = response.tracks;
+
+    // Add all tracks to All Tracks if not present
+    response.tracks.forEach(trackObj => {
+      if (!playlists["All Tracks"].some(t => isSameTrack(t, trackObj))) {
+        playlists["All Tracks"].push(trackObj);
+      }
+    });
+
+    savePlaylistsToStorage();
+
+    // Start background stream & lyrics preloading
+    preloadStreamsForPlaylist(response.tracks);
+
+    // Reset UI
+    importLikedForm.style.display = 'none';
+    importLikedStatus.style.display = 'none';
+
+    // Navigate directly to the new playlist detail
+    currentViewedPlaylist = playlistName;
+    playlistsListView.style.display = 'none';
+    playlistsListHeader.style.display = 'none';
+    playlistDetailView.style.display = 'block';
+    playlistDetailHeader.style.display = 'flex';
+    
+    renderPlaylist();
+
+  } catch (err) {
+    console.error('Liked songs OAuth or import error:', err);
+    importLikedAuthBtn.disabled = false;
+    importLikedCancel.disabled = false;
+    importLikedStatus.textContent = `Authentication failed: ${err.message || err}`;
+  }
 });
 
 // ---------- YouTube Playlist Importer Event Listeners ----------

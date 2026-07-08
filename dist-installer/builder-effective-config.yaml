@@ -1,8 +1,11 @@
 directories:
   output: dist-installer
   buildResources: build
-appId: com.mineradio.player
-productName: MineRadioPlayer
+appId: com.RafaRadio
+extraResources:
+  - filter:
+      - firebase-applet-config.json
+productName: RafaRadio
 files:
   - filter:
       - src/**/*

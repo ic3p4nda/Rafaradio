@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('api', {
   youtubeSearch: (query) => ipcRenderer.invoke('youtube-search', query),
   youtubePrepareStream: (videoId) => ipcRenderer.invoke('youtube-prepare-stream', videoId),
   youtubeImportPlaylist: (playlistUrl) => ipcRenderer.invoke('youtube-import-playlist', playlistUrl),
+  youtubeImportLikedSongs: (accessToken) => ipcRenderer.invoke('youtube-import-liked', accessToken),
   fetchLyrics: (title, artist) => ipcRenderer.invoke('fetch-lyrics', title, artist),
   minimizeWindow: () => ipcRenderer.send('window-minimize'),
   toggleFullscreenWindow: () => ipcRenderer.send('window-fullscreen-toggle'),
