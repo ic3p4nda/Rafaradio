@@ -9,7 +9,7 @@ build/
 out/
 
 # Electron
-release/
+dist-installer/
 *.dmg
 *.exe
 *.zip
