@@ -224,21 +224,11 @@ async function fetchLyrics(title, artist) {
     }
 
     console.warn('⚠ No lyrics returned from available free providers.');
-    return generateDemoLyrics(safeTitle, safeArtist);
+    return null;
   } catch (err) {
     console.error('Error fetching lyrics:', err);
-    return generateDemoLyrics(title || 'Unknown Title', artist || 'Unknown Artist');
+    return null;
   }
-}
-
-function generateDemoLyrics(title, artist) {
-  return [
-    `♪ ${title || 'Now Playing'} ♪`,
-    `by ${artist || 'Unknown Artist'}`,
-    '',
-    'Lyrics could not be fetched ',
-    'Enjoy the show!',
-  ];
 }
 
 module.exports = {

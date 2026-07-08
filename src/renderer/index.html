@@ -233,8 +233,7 @@
   <script type="importmap">
   {
     "imports": {
-      "three": "../../node_modules/three/build/three.module.min.js",
-      "three/addons/": "../../node_modules/three/examples/jsm/"
+      "three": "../../node_modules/three/build/three.module.min.js"
     }
   }
   </script>
@@ -267,6 +266,14 @@
             return await res.json();
           } catch (err) {
             return { error: 'Failed to prepare stream.' };
+          }
+        },
+        youtubeImportPlaylist: async (playlistUrl) => {
+          try {
+            const res = await fetch(`/api/youtube-import-playlist?playlistUrl=${encodeURIComponent(playlistUrl)}`);
+            return await res.json();
+          } catch (err) {
+            return { error: 'Failed to import playlist.' };
           }
         },
         fetchLyrics: async (title, artist) => {

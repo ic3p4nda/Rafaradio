@@ -1,0 +1,17 @@
+directories:
+  output: dist-installer
+  buildResources: build
+appId: com.mineradio.player
+productName: MineRadioPlayer
+files:
+  - filter:
+      - src/**/*
+      - node_modules/**/*
+      - package.json
+win:
+  target: nsis
+mac:
+  target: dmg
+linux:
+  target: AppImage
+electronVersion: 43.0.0

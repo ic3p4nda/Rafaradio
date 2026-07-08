@@ -12,4 +12,5 @@ contextBridge.exposeInMainWorld('api', {
   minimizeWindow: () => ipcRenderer.send('window-minimize'),
   toggleFullscreenWindow: () => ipcRenderer.send('window-fullscreen-toggle'),
   closeWindow: () => ipcRenderer.send('window-close'),
+  onFullscreenState: (callback) => ipcRenderer.on('window-fullscreen-state', (event, state) => callback(state)),
 });
