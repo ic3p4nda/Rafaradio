@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('api', {
   getTrackMetadata: (filePath) => ipcRenderer.invoke('get-track-metadata', filePath),
   youtubeSearch: (query) => ipcRenderer.invoke('youtube-search', query),
   youtubePrepareStream: (videoId) => ipcRenderer.invoke('youtube-prepare-stream', videoId),
+  youtubeImportPlaylist: (playlistUrl) => ipcRenderer.invoke('youtube-import-playlist', playlistUrl),
   fetchLyrics: (title, artist) => ipcRenderer.invoke('fetch-lyrics', title, artist),
   minimizeWindow: () => ipcRenderer.send('window-minimize'),
   toggleFullscreenWindow: () => ipcRenderer.send('window-fullscreen-toggle'),

@@ -3,15 +3,32 @@ const path = require('path');
 const http = require('http');
 const https = require('https');
 const crypto = require('crypto');
+const fs = require('fs');
 const YTMusic = require('ytmusic-api');
 const YTDlpWrap = require('yt-dlp-wrap').default;
-const { fetchLyrics, setGeniusApiKey } = require('./lyrics-service');
+const { fetchLyrics } = require('./lyrics-service');
 
-const GENIUS_API_KEY = process.env.GENIUS_API_KEY || '';
-if (GENIUS_API_KEY) {
-  setGeniusApiKey(GENIUS_API_KEY);
-} else {
-  console.info('No Genius API key configured; lyrics fallback will be used.');
+const binDir = path.join(__dirname, '..', 'bin');
+const ytDlpPath = path.join(binDir, process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp');
+const ytDlpWrap = new YTDlpWrap(ytDlpPath);
+
+async function ensureYtDlp() {
+  if (!fs.existsSync(binDir)) {
+    fs.mkdirSync(binDir, { recursive: true });
+  }
+
+  if (!fs.existsSync(ytDlpPath)) {
+    console.log('Downloading yt-dlp binary from GitHub for Electron...');
+    try {
+      await YTDlpWrap.downloadFromGithub(ytDlpPath);
+      console.log('Downloaded yt-dlp successfully!');
+      if (process.platform !== 'win32') {
+        fs.chmodSync(ytDlpPath, '755'); // Make it executable
+      }
+    } catch (err) {
+      console.error('Failed to download yt-dlp:', err);
+    }
+  }
 }
 
 let mainWindow;
@@ -38,6 +55,9 @@ function createWindow() {
 
 app.whenReady().then(() => {
   createWindow();
+
+  // Pre-download yt-dlp asynchronously on desktop app startup
+  ensureYtDlp().catch(err => console.error('Error pre-downloading yt-dlp on startup:', err));
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -112,7 +132,6 @@ ipcMain.handle('youtube-search', async (event, query) => {
     return { error: 'Search failed — check your internet connection.' };
   }
 });
-const ytDlpWrap = new YTDlpWrap();
 const streamTokens = new Map(); 
 let proxyPort = null;
 let resolveProxyReady;
@@ -174,6 +193,8 @@ ipcMain.handle('youtube-prepare-stream', async (event, videoId) => {
   }
 
   try {
+    await ensureYtDlp();
+
     const info = await ytDlpWrap.getVideoInfo([
       `https://www.youtube.com/watch?v=${videoId}`,
       '-f',
@@ -195,7 +216,7 @@ ipcMain.handle('youtube-prepare-stream', async (event, videoId) => {
   } catch (err) {
     console.error('yt-dlp failed:', err);
     return {
-      error: 'Could not fetch this track. Make sure yt-dlp is installed and on your PATH.',
+      error: 'Could not fetch this track. Make sure yt-dlp is available.',
     };
   }
 });
@@ -207,5 +228,70 @@ ipcMain.handle('fetch-lyrics', async (event, title, artist) => {
   } catch (err) {
     console.error('Lyrics fetch failed:', err);
     return null;
+  }
+});
+
+ipcMain.handle('youtube-import-playlist', async (event, playlistUrl) => {
+  if (!playlistUrl || typeof playlistUrl !== 'string') {
+    return { error: 'No playlist URL provided.' };
+  }
+
+  const trimmed = playlistUrl.trim();
+  let targetUrl = trimmed;
+
+  // If only the ID is provided, build a URL
+  if (/^[A-Za-z0-9_-]{18,34}$/.test(trimmed)) {
+    targetUrl = `https://www.youtube.com/playlist?list=${trimmed}`;
+  } else {
+    try {
+      new URL(trimmed);
+    } catch (e) {
+      return { error: 'Invalid URL. Please enter a valid YouTube or YouTube Music playlist URL.' };
+    }
+  }
+
+  try {
+    await ensureYtDlp();
+
+    console.log(`Importing playlist from: ${targetUrl}`);
+    const stdout = await ytDlpWrap.execPromise([
+      targetUrl,
+      '--flat-playlist',
+      '--dump-single-json',
+    ]);
+
+    if (!stdout) {
+      return { error: 'No data returned from YouTube playlist extractor.' };
+    }
+
+    const playlistInfo = JSON.parse(stdout);
+    if (!playlistInfo || !playlistInfo.entries) {
+      return { error: 'Failed to extract entries from this playlist.' };
+    }
+
+    const playlistTitle = playlistInfo.title || 'Imported Playlist';
+    const tracks = playlistInfo.entries
+      .filter(entry => entry && entry.id)
+      .map(entry => {
+        const videoId = entry.id;
+        const thumbnail = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+        return {
+          type: 'youtube',
+          videoId: videoId,
+          name: entry.title || 'Untitled Song',
+          artist: entry.uploader || entry.artist || 'Unknown Artist',
+          thumbnail: thumbnail
+        };
+      });
+
+    return {
+      title: playlistTitle,
+      tracks: tracks
+    };
+  } catch (err) {
+    console.error('Playlist import failed:', err);
+    return {
+      error: 'Could not fetch the playlist. Make sure the playlist is public or unlisted.'
+    };
   }
 });
