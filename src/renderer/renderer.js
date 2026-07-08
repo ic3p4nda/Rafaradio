@@ -1,12 +1,13 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import LyricsVisualizer from './lyrics-visualizer.js';
+import LyricsVisualizer, { normalizeLyricLines } from './lyrics-visualizer.js';
 import LyricsSyncController from './lyrics-sync.js';
 
 // ---------- State ----------
 // Each track: { type: 'local', path, name } or { type: 'youtube', videoId, name, artist, thumbnail }
 const playlist = [];
 let currentIndex = -1;
+let activeTrackLoadId = 0;
 
 // ---------- Elements ----------
 const audio = document.getElementById('audio');
@@ -36,6 +37,7 @@ const cloudStatus = document.getElementById('cloudStatus');
 const lyricsToggle = document.getElementById('lyricsToggle');
 const lyricsPanel = document.getElementById('lyricsPanel');
 const lyricsCanvas = document.getElementById('lyricsCanvas');
+const lyricsOverlay = document.getElementById('lyricsOverlay');
 const lyricsStatus = document.getElementById('lyricsStatus');
 const lyricsRefresh = document.getElementById('lyricsRefresh');
 const lyricsClose = document.getElementById('lyricsClose');
@@ -43,6 +45,7 @@ const lyricsClose = document.getElementById('lyricsClose');
 // Lyrics state
 let lyricsVisualizer = null;
 let lyricsSyncController = null;
+let lyricsVisible = false;
 
 // ---------- Titlebar window controls ----------
 document.getElementById('minBtn').addEventListener('click', () => window.api.minimizeWindow());
@@ -55,21 +58,32 @@ playlistToggle.addEventListener('click', () => {
   playlistToggle.textContent = isOpen ? 'Close' : 'Library';
 });
 
-// ---------- Lyrics stage drawer ----------
-lyricsToggle.addEventListener('click', () => {
-  const isOpen = lyricsPanel.classList.toggle('open');
-  lyricsToggle.textContent = isOpen ? 'Close' : 'Lyrics';
-  
-  if (isOpen && !lyricsVisualizer) {
+// ---------- Lyrics toggle (renders into particle space) ----------
+lyricsToggle.addEventListener('click', async () => {
+  lyricsVisible = !lyricsVisible;
+  lyricsToggle.textContent = lyricsVisible ? 'Hide Lyrics' : 'Lyrics';
+
+  // Ensure visualizer exists and is attached to the particle scene
+  if (lyricsVisible && !lyricsVisualizer) {
     initLyricsVisualizer();
+  }
+
+  // If enabling and there's a current track without lyrics loaded, fetch them
+  if (lyricsVisible && playlist[currentIndex] && lyricsVisualizer && (!lyricsVisualizer.lyricsLines || !lyricsVisualizer.lyricsLines.length)) {
+    const track = playlist[currentIndex];
+    lyricsStatus.textContent = 'Fetching lyrics...';
+    await fetchAndDisplayLyrics(track);
+  }
+
+  // Toggle visibility by fading meshes in/out
+  if (lyricsVisualizer && lyricsVisualizer.lineMeshes) {
+    for (const m of lyricsVisualizer.lineMeshes.values()) {
+      m.userData.targetOpacity = lyricsVisible ? 1 : 0;
+    }
   }
 });
 
-lyricsClose.addEventListener('click', () => {
-  lyricsPanel.classList.remove('open');
-  lyricsToggle.textContent = 'Lyrics';
-});
-
+// Keep refresh button as a manual fetch, but do not open a separate panel
 lyricsRefresh.addEventListener('click', async () => {
   if (!playlist[currentIndex]) return;
   const track = playlist[currentIndex];
@@ -78,55 +92,83 @@ lyricsRefresh.addEventListener('click', async () => {
 });
 
 function initLyricsVisualizer() {
-  if (lyricsVisualizer) return;
-  
-  // Initialize the Three.js visualizer
-  lyricsVisualizer = new LyricsVisualizer(lyricsCanvas);
-  
-  // Initialize the sync controller
-  lyricsSyncController = new LyricsSyncController(audio, lyricsVisualizer);
-  
-  // Set up audio event listeners for lyrics sync
-  audio.addEventListener('play', () => {
-    if (lyricsSyncController) lyricsSyncController.start();
-  });
-  
-  audio.addEventListener('pause', () => {
-    if (lyricsSyncController) lyricsSyncController.stop();
-  });
-  
-  audio.addEventListener('seeking', () => {
-    if (lyricsSyncController) lyricsSyncController.seek(audio.currentTime);
-  });
+  if (lyricsVisualizer) return true;
+
+  try {
+    // Attach lyrics visualizer to the main particle scene so text renders
+    // in the same space as the particles.
+    lyricsVisualizer = new LyricsVisualizer(null, lyricsOverlay, { scene: scene, camera: camera, renderer: renderer3D });
+    lyricsSyncController = new LyricsSyncController(audio, lyricsVisualizer);
+
+    audio.addEventListener('play', () => {
+      if (lyricsSyncController) lyricsSyncController.start();
+    });
+
+    audio.addEventListener('pause', () => {
+      if (lyricsSyncController) lyricsSyncController.stop();
+    });
+
+    audio.addEventListener('seeking', () => {
+      if (lyricsSyncController) lyricsSyncController.seek(audio.currentTime);
+    });
+
+    return true;
+  } catch (err) {
+    console.error('Failed to initialize lyrics visualizer:', err);
+    lyricsVisualizer = null;
+    lyricsSyncController = null;
+    return false;
+  }
 }
 
 async function fetchAndDisplayLyrics(track) {
   try {
+    lyricsStatus.textContent = 'Fetching lyrics...';
+    console.log('Starting lyrics fetch for:', track.name, track.artist);
+
     const lyrics = await window.api.fetchLyrics(track.name, track.artist || '');
-    
+    console.log('Received lyrics:', lyrics?.length, 'lines');
+
     if (!lyrics || lyrics.length === 0) {
-      lyricsStatus.textContent = 'No lyrics found :(';
+      lyricsStatus.textContent = 'No lyrics found';
       return;
     }
-    
-    // Initialize visualizer if needed
-    if (!lyricsVisualizer) {
-      initLyricsVisualizer();
+
+    const visualizerReady = initLyricsVisualizer();
+    const displayLyrics = normalizeLyricLines(lyrics);
+
+    console.log('Displaying lyrics in visualizer...');
+    if (lyricsVisualizer) {
+      try {
+        await lyricsVisualizer.displayLyrics(displayLyrics);
+        console.log('✓ Lyrics displayed successfully');
+      } catch (vizErr) {
+        console.error('Visualizer error:', vizErr);
+      }
     }
-    
-    // Display the lyrics
-    lyricsVisualizer.displayLyrics(lyrics);
-    lyricsSyncController.setLyrics(lyrics);
-    
-    lyricsStatus.textContent = `${lyrics.length} lines`;
-    
-    // Start playback sync if music is playing
+
+    if (lyricsSyncController) {
+      lyricsSyncController.setLyrics(lyrics);
+    }
+
+    const isDemoLyrics = displayLyrics.some((line) =>
+      line.includes('Lyrics could not be fetched') ||
+      line.includes('watch the rhythm')
+    );
+
+    const statusText = isDemoLyrics
+      ? `${lyrics.length} demo lines (for testing)`
+      : `${lyrics.length} lines loaded ✓`;
+
+    console.log('Status:', statusText);
+    lyricsStatus.textContent = statusText;
+
     if (!audio.paused && lyricsSyncController) {
       lyricsSyncController.start();
     }
   } catch (err) {
     console.error('Error fetching lyrics:', err);
-    lyricsStatus.textContent = 'Error fetching lyrics';
+    lyricsStatus.textContent = 'Error loading lyrics';
   }
 }
 
@@ -221,6 +263,8 @@ function renderPlaylist() {
 
 async function loadTrack(index) {
   if (index < 0 || index >= playlist.length) return;
+
+  const trackLoadId = ++activeTrackLoadId;
   currentIndex = index;
   const track = playlist[currentIndex];
 
@@ -228,21 +272,29 @@ async function loadTrack(index) {
   trackArtist.textContent = track.artist || '';
   renderPlaylist();
 
-  // Stop and reset lyrics for the old track
   if (lyricsSyncController) {
     lyricsSyncController.stop();
   }
   lyricsStatus.textContent = 'No lyrics loaded';
 
   if (track.type === 'local') {
-    // file:// URL — encodeURI handles spaces/special chars in the path
     audio.src = 'file://' + encodeURI(track.path.replace(/\\/g, '/'));
-    audio.play();
-    startPlaybackUI();
-    applyLocalMetadata(track);
-    
-    // Fetch lyrics if lyrics panel is open
-    if (lyricsPanel.classList.contains('open')) {
+
+    try {
+      await audio.play();
+      if (trackLoadId !== activeTrackLoadId) return;
+      startPlaybackUI();
+    } catch (err) {
+      console.warn('Local track playback failed:', err);
+      if (trackLoadId !== activeTrackLoadId) return;
+      stopPlaybackUI();
+      trackTitle.textContent = `Playback failed — ${track.name}`;
+    }
+
+    if (trackLoadId !== activeTrackLoadId) return;
+    await applyLocalMetadata(track);
+
+    if (lyricsVisible) {
       fetchAndDisplayLyrics(track);
     }
   } else {
@@ -250,7 +302,6 @@ async function loadTrack(index) {
     disc.classList.remove('spinning');
     audio.removeAttribute('src');
 
-    // Cloud tracks show their thumbnail immediately, no need to wait on it.
     if (track.thumbnail) {
       discArt.src = track.thumbnail;
       discArt.classList.add('visible');
@@ -263,8 +314,7 @@ async function loadTrack(index) {
 
     const result = await window.api.youtubePrepareStream(track.videoId);
 
-    // The user may have skipped to a different track while this was resolving.
-    if (playlist[currentIndex] !== track) return;
+    if (trackLoadId !== activeTrackLoadId) return;
 
     if (result.error) {
       trackTitle.textContent = `Error — ${result.error}`;
@@ -272,12 +322,21 @@ async function loadTrack(index) {
     }
 
     audio.src = result.streamUrl;
-    audio.play();
-    trackTitle.textContent = track.name;
-    startPlaybackUI();
-    
-    // Fetch lyrics if lyrics panel is open
-    if (lyricsPanel.classList.contains('open')) {
+
+    try {
+      await audio.play();
+      if (trackLoadId !== activeTrackLoadId) return;
+      trackTitle.textContent = track.name;
+      startPlaybackUI();
+    } catch (err) {
+      console.warn('YouTube playback failed:', err);
+      if (trackLoadId !== activeTrackLoadId) return;
+      stopPlaybackUI();
+      trackTitle.textContent = `Playback failed — ${track.name}`;
+    }
+
+    if (trackLoadId !== activeTrackLoadId) return;
+    if (lyricsVisible) {
       fetchAndDisplayLyrics(track);
     }
   }
@@ -295,7 +354,10 @@ function stopPlaybackUI() {
 
 async function applyLocalMetadata(track) {
   const meta = await window.api.getTrackMetadata(track.path);
-  if (playlist[currentIndex] !== track) return; // track changed while this was resolving
+  if (playlist[currentIndex] !== track) return;
+
+  if (meta.title) track.name = meta.title;
+  if (meta.artist) track.artist = meta.artist;
 
   trackTitle.textContent = meta.title || track.name;
   trackArtist.textContent = meta.artist || '';
@@ -312,13 +374,19 @@ async function applyLocalMetadata(track) {
 }
 
 // ---------- Transport controls ----------
-playBtn.addEventListener('click', () => {
+playBtn.addEventListener('click', async () => {
   if (!audio.src) return;
-  if (audio.paused) {
-    audio.play();
-    startPlaybackUI();
-  } else {
-    audio.pause();
+
+  try {
+    if (audio.paused) {
+      await audio.play();
+      startPlaybackUI();
+    } else {
+      audio.pause();
+      stopPlaybackUI();
+    }
+  } catch (err) {
+    console.warn('Playback toggle failed:', err);
     stopPlaybackUI();
   }
 });
@@ -329,6 +397,13 @@ nextBtn.addEventListener('click', () => loadTrack(currentIndex + 1));
 audio.addEventListener('ended', () => {
   if (currentIndex + 1 < playlist.length) loadTrack(currentIndex + 1);
   else stopPlaybackUI();
+});
+
+audio.addEventListener('error', () => {
+  stopPlaybackUI();
+  if (playlist[currentIndex]) {
+    trackTitle.textContent = `Playback error — ${playlist[currentIndex].name}`;
+  }
 });
 
 // ---------- Seek bar ----------

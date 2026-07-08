@@ -7,15 +7,12 @@ const YTMusic = require('ytmusic-api');
 const YTDlpWrap = require('yt-dlp-wrap').default;
 const { fetchLyrics, setGeniusApiKey } = require('./lyrics-service');
 
-// ========================================
-// GENIUS API KEY - PASTE YOUR KEY HERE
-// ========================================
-// Get your free key from: https://genius.com/api-clients
-const GENIUS_API_KEY = ''; // ← Paste your Genius API token here
+const GENIUS_API_KEY = process.env.GENIUS_API_KEY || '';
 if (GENIUS_API_KEY) {
   setGeniusApiKey(GENIUS_API_KEY);
+} else {
+  console.info('No Genius API key configured; lyrics fallback will be used.');
 }
-// ========================================
 
 let mainWindow;
 
@@ -124,10 +121,17 @@ const proxyReady = new Promise((resolve) => {
 });
 
 const proxyServer = http.createServer((req, res) => {
-  const token = req.url.replace('/stream/', '').split('?')[0];
+  let pathname = '/';
+  try {
+    pathname = new URL(req.url, `http://${req.headers.host || '127.0.0.1'}`).pathname;
+  } catch {
+    pathname = req.url || '/';
+  }
+
+  const token = pathname.replace(/^\/stream\//, '').split('/')[0];
   const entry = streamTokens.get(token);
   if (!entry) {
-    res.writeHead(404);
+    res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
     res.end('Unknown or expired stream token');
     return;
   }
@@ -137,13 +141,17 @@ const proxyServer = http.createServer((req, res) => {
 
   https
     .get(entry.url, { headers: upstreamHeaders }, (upstreamRes) => {
-      res.writeHead(upstreamRes.statusCode, upstreamRes.headers);
+      res.writeHead(upstreamRes.statusCode || 502, upstreamRes.headers);
       upstreamRes.pipe(res);
     })
     .on('error', (err) => {
-      res.writeHead(502);
+      res.writeHead(502, { 'content-type': 'text/plain; charset=utf-8' });
       res.end('Upstream fetch failed: ' + err.message);
     });
+});
+
+proxyServer.on('error', (err) => {
+  console.error('Proxy server error:', err);
 });
 
 proxyServer.listen(0, '127.0.0.1', () => {
@@ -151,7 +159,20 @@ proxyServer.listen(0, '127.0.0.1', () => {
   resolveProxyReady();
 });
 
+app.on('before-quit', () => {
+  streamTokens.clear();
+  try {
+    proxyServer.close();
+  } catch (err) {
+    console.warn('Failed to close proxy server cleanly:', err);
+  }
+});
+
 ipcMain.handle('youtube-prepare-stream', async (event, videoId) => {
+  if (!videoId || typeof videoId !== 'string') {
+    return { error: 'No video selected.' };
+  }
+
   try {
     const info = await ytDlpWrap.getVideoInfo([
       `https://www.youtube.com/watch?v=${videoId}`,
@@ -161,6 +182,10 @@ ipcMain.handle('youtube-prepare-stream', async (event, videoId) => {
     ]);
 
     await proxyReady;
+
+    if (!info?.url) {
+      return { error: 'No audio stream was returned for this video.' };
+    }
 
     const token = crypto.randomUUID();
     streamTokens.set(token, { url: info.url, headers: info.http_headers || {} });
