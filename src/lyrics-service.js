@@ -1,8 +1,5 @@
 const https = require('https');
 
-function setGeniusApiKey(apiKey) {
-}
-
 function parseTimestamp(timestamp) {
   const cleanTimestamp = String(timestamp || '').trim();
   if (!cleanTimestamp) return null;
@@ -246,7 +243,6 @@ function generateDemoLyrics(title, artist) {
 
 module.exports = {
   fetchLyrics,
-  setGeniusApiKey,
   parseSyncedLyrics,
   fetchFromLrcLib,
   buildLrcLibLookupUrls,

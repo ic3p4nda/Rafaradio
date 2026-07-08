@@ -6,12 +6,8 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-
-  <!-- Custom titlebar, replaces the native OS one (frame: false in main.js) -->
   <div class="titlebar">
     <div class="titlebar-drag">
-      <span class="titlebar-dot"></span>
-      <span class="titlebar-label">now playing</span>
     </div>
     <div class="titlebar-controls">
       <button id="minBtn" class="win-btn" aria-label="Minimize">&#8211;</button>
@@ -25,15 +21,32 @@
     <canvas id="particles"></canvas>
     <div id="lyricsOverlay" class="lyrics-overlay" aria-live="polite"></div>
 
-    <button id="playlistToggle" class="playlist-toggle">Library</button>
-    <button id="cloudToggle" class="cloud-toggle">Cloud</button>
-    <button id="lyricsToggle" class="lyrics-toggle">Lyrics</button>
+    <div class="nav-pill">
+      <button id="cloudToggle" class="nav-pill-btn" title="Search Cloud">
+        <svg class="icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        Cloud
+      </button>
+      <button id="lyricsToggle" class="nav-pill-btn" title="Toggle 3D Lyrics">
+        <svg class="icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v1a7 7 0 0 1-14 0v-1"></path><line x1="12" y1="19" x2="12" y2="22"></line></svg>
+        Lyrics
+      </button>
+      <button id="playlistToggle" class="nav-pill-btn" title="Open Library">
+        <svg class="icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>
+        Library
+      </button>
+      <button id="settingsToggle" class="nav-pill-btn" title="Lyrics Settings">
+        <svg class="icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+        Settings
+      </button>
+    </div>
 
     <aside id="lyricsPanel" class="lyrics-panel">
       <div class="lyrics-header">
         <span>Lyrics Stage</span>
         <div class="lyrics-controls">
-          <button id="lyricsRefresh" class="lyrics-btn" title="Fetch lyrics">🔄</button>
+          <button id="lyricsRefresh" class="lyrics-btn" title="Fetch lyrics">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+          </button>
           <button id="lyricsClose" class="lyrics-btn" title="Close">✕</button>
         </div>
       </div>
@@ -42,8 +55,75 @@
     </aside>
 
     <aside id="playlistPanel" class="playlist-panel">
-      <div class="playlist-header">Library</div>
-      <ul id="playlist"></ul>
+      <!-- Playlist Detail View Header (hidden by default) -->
+      <div id="playlistDetailHeader" class="playlist-header playlist-detail-header" style="display: none;">
+        <button id="playlistBackBtn" class="playlist-back-btn" title="Back to Playlists"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="display:inline; margin-right:4px; vertical-align:middle;"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>Playlists</button>
+        <span id="playlistDetailTitle">Playlist</span>
+        <button id="playlistPlayAllBtn" class="playlist-play-all-btn" title="Play Playlist"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" style="display:inline; margin-right:4px; vertical-align:middle;"><path d="M8 5v14l11-7z"/></svg>Play</button>
+      </div>
+
+      <!-- Playlists Main View Header -->
+      <div id="playlistsListHeader" class="playlist-header">
+        <span>Library</span>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <button id="importPlaylistBtn" class="playlist-create-btn" title="Import YouTube Playlist" style="display: flex; align-items: center; justify-content: center;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+          </button>
+          <button id="createPlaylistBtn" class="playlist-create-btn" title="Create Playlist">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- List of playlists -->
+      <div id="playlistsListView" class="playlists-list-view">
+        <!-- New Playlist Input Form (hidden by default) -->
+        <div id="newPlaylistForm" class="new-playlist-form" style="display: none;">
+          <input id="newPlaylistInput" type="text" placeholder="Playlist name..." maxlength="30" />
+          <div class="new-playlist-actions">
+            <button id="newPlaylistSave" class="playlist-form-btn save">Save</button>
+            <button id="newPlaylistCancel" class="playlist-form-btn cancel">Cancel</button>
+          </div>
+        </div>
+
+        <!-- Import Playlist Input Form (hidden by default) -->
+        <div id="importPlaylistForm" class="new-playlist-form" style="display: none;">
+          <input id="importPlaylistInput" type="text" placeholder="YouTube Playlist Link or ID..." />
+          <div id="importPlaylistStatus" style="font-size: 10px; color: var(--gold); margin-bottom: 8px; display: none; line-height: 1.4;">Importing songs... Please wait.</div>
+          <div class="new-playlist-actions">
+            <button id="importPlaylistSave" class="playlist-form-btn save">Import</button>
+            <button id="importPlaylistCancel" class="playlist-form-btn cancel">Cancel</button>
+          </div>
+        </div>
+
+        <ul id="playlistsList">
+          <!-- Populated by JS: All Tracks, Favorites, Custom playlists -->
+        </ul>
+      </div>
+
+      <!-- Playlist tracks view (hidden by default) -->
+      <div id="playlistDetailView" class="playlist-detail-view" style="display: none;">
+        <div class="playlist-detail-actions-row">
+          <button id="addActiveTrackBtn" class="add-active-track-btn"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline; margin-right:4px; vertical-align:middle;"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>Add Current Track</button>
+          <button id="deletePlaylistBtn" class="delete-playlist-btn" style="display: none;">Delete Playlist</button>
+        </div>
+        <ul id="playlistTracksList">
+          <!-- Populated by JS: Tracks in selected playlist -->
+        </ul>
+      </div>
+
+      <!-- Inline Add-to-Playlist Dialog modal -->
+      <div id="addToPlaylistModal" class="add-to-playlist-modal" style="display: none;">
+        <div class="modal-content">
+          <div class="modal-header">
+            <span>Add to Playlist</span>
+            <button id="closeModalBtn" class="modal-close"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
+          </div>
+          <ul id="modalPlaylistsList">
+            <!-- List of target playlists -->
+          </ul>
+        </div>
+      </div>
     </aside>
 
     <aside id="cloudPanel" class="cloud-panel">
@@ -53,6 +133,56 @@
       </form>
       <div id="cloudStatus" class="cloud-status"></div>
       <ul id="cloudResults"></ul>
+    </aside>
+
+    <aside id="settingsPanel" class="settings-panel">
+      <div class="playlist-header">Lyrics Customization</div>
+      <div class="settings-content">
+        <div class="settings-group">
+          <label for="fontSelect">Font Style</label>
+          <select id="fontSelect" class="settings-control">
+            <option value="'Space Grotesk', 'Inter', sans-serif">Space Grotesk (Modern)</option>
+            <option value="'Inter', sans-serif">Inter (Clean)</option>
+            <option value="'Cinzel', serif">Cinzel (Elegant)</option>
+            <option value="'VT323', monospace">VT323 (Retro)</option>
+            <option value="'Playfair Display', serif">Playfair (Classic)</option>
+          </select>
+        </div>
+
+        <div class="settings-group">
+          <label for="glowColorSelect">Active Text Glow</label>
+          <select id="glowColorSelect" class="settings-control">
+            <option value="gold">Cosmic Gold (Default)</option>
+            <option value="cyan">Neon Cyan</option>
+            <option value="magenta">Hyper Pink</option>
+            <option value="green">Acid Green</option>
+            <option value="white">Ghostly White</option>
+          </select>
+        </div>
+
+        <div class="settings-group">
+          <label for="textSizeSlider">Text Size Scale</label>
+          <div class="slider-row">
+            <input type="range" id="textSizeSlider" class="settings-slider" min="0.5" max="1.8" step="0.05" value="1.0" />
+            <span id="textSizeVal" class="settings-val">1.0x</span>
+          </div>
+        </div>
+
+        <div class="settings-group">
+          <label for="bounceSlider">Bass Bounce Intensity</label>
+          <div class="slider-row">
+            <input type="range" id="bounceSlider" class="settings-slider" min="0" max="2.0" step="0.1" value="1.0" />
+            <span id="bounceVal" class="settings-val">1.0x</span>
+          </div>
+        </div>
+
+        <div class="settings-group">
+          <div class="toggle-row">
+            <label for="spotlightToggleCheck">Spotlight Glow Background</label>
+            <input type="checkbox" id="spotlightToggleCheck" checked />
+          </div>
+        </div>
+      </div>
     </aside>
 
     <div class="deck">
@@ -65,7 +195,10 @@
       <div class="deck-main">
         <div class="track-info">
           <div class="track-text">
-            <div id="trackTitle">No track loaded</div>
+            <div class="track-title-row">
+              <span id="trackTitle">No track loaded</span>
+              <button id="likeBtn" class="like-btn" title="Add to Favorites" aria-label="Like track"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg></button>
+            </div>
             <div id="trackArtist"></div>
           </div>
           <div id="trackTime">0:00 / 0:00</div>
@@ -74,16 +207,22 @@
         <input type="range" id="seekBar" value="0" min="0" max="100" step="0.1" />
 
         <div class="controls">
-          <button id="prevBtn" class="ctrl-btn" aria-label="Previous">&#9198;</button>
-          <button id="playBtn" class="ctrl-btn ctrl-btn-main" aria-label="Play">&#9654;</button>
-          <button id="nextBtn" class="ctrl-btn" aria-label="Next">&#9197;</button>
+          <button id="shuffleBtn" class="ctrl-btn-secondary" title="Shuffle" aria-label="Shuffle">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"></polyline><line x1="4" y1="20" x2="21" y2="3"></line><polyline points="21 16 21 21 16 21"></polyline><line x1="15" y1="15" x2="21" y2="21"></line><line x1="4" y1="4" x2="9" y2="9"></line></svg>
+          </button>
+          <button id="prevBtn" class="ctrl-btn" aria-label="Previous"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg></button>
+          <button id="playBtn" class="ctrl-btn ctrl-btn-main" aria-label="Play"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="margin-left: 2px;"><path d="M8 5v14l11-7z"/></svg></button>
+          <button id="nextBtn" class="ctrl-btn" aria-label="Next"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6zm9-12h2v12h-2z"/></svg></button>
+          <button id="repeatBtn" class="ctrl-btn-secondary" title="Repeat" aria-label="Repeat">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg>
+          </button>
 
           <div class="volume-wrap">
-            <span class="volume-icon">&#9834;</span>
+            <span class="volume-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5L6 9H2v6h4l5 4V5z"></path><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg></span>
             <input type="range" id="volumeBar" min="0" max="1" step="0.01" value="1" />
           </div>
 
-          <button id="openBtn" class="add-btn">+ Add Files</button>
+          <button id="openBtn" class="add-btn"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; margin-right:4px; vertical-align:middle; position:relative; top:-1px;"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>Add Files</button>
         </div>
       </div>
     </div>
@@ -98,6 +237,48 @@
       "three/addons/": "../../node_modules/three/examples/jsm/"
     }
   }
+  </script>
+  <script>
+    if (!window.api) {
+      window.api = {
+        isBrowser: true,
+        minimizeWindow: () => console.log('Minimize window'),
+        toggleFullscreenWindow: () => {
+          if (document.fullscreenElement) {
+            document.exitFullscreen().catch(() => {});
+          } else {
+            document.documentElement.requestFullscreen().catch(() => {});
+          }
+        },
+        closeWindow: () => console.log('Close window'),
+        openAudioFiles: async () => [],
+        getTrackMetadata: async () => ({ title: null, artist: null, album: null, cover: null }),
+        youtubeSearch: async (query) => {
+          try {
+            const res = await fetch(`/api/youtube-search?q=${encodeURIComponent(query)}`);
+            return await res.json();
+          } catch (err) {
+            return { error: 'Search failed.' };
+          }
+        },
+        youtubePrepareStream: async (videoId) => {
+          try {
+            const res = await fetch(`/api/youtube-prepare-stream?videoId=${encodeURIComponent(videoId)}`);
+            return await res.json();
+          } catch (err) {
+            return { error: 'Failed to prepare stream.' };
+          }
+        },
+        fetchLyrics: async (title, artist) => {
+          try {
+            const res = await fetch(`/api/fetch-lyrics?title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}`);
+            return await res.json();
+          } catch (err) {
+            return null;
+          }
+        }
+      };
+    }
   </script>
   <script type="module" src="renderer.js"></script>
 </body>
