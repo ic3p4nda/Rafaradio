@@ -295,6 +295,11 @@ const textSizeVal = document.getElementById('textSizeVal');
 const bounceSlider = document.getElementById('bounceSlider');
 const bounceVal = document.getElementById('bounceVal');
 const spotlightToggleCheck = document.getElementById('spotlightToggleCheck');
+const discToggleCheck = document.getElementById('discToggleCheck');
+const syncColorsCheck = document.getElementById('syncColorsCheck');
+const waveformColorGroup = document.getElementById('waveformColorGroup');
+const waveColorSelect = document.getElementById('waveColorSelect');
+const visualizerStyleSelect = document.getElementById('visualizerStyleSelect');
 
 // Lyrics state
 let lyricsVisualizer = null;
@@ -344,7 +349,11 @@ function initSettingsUI() {
     glowColor: "gold",
     textSize: 1.0,
     bounceIntensity: 1.0,
-    showSpotlight: true
+    showSpotlight: true,
+    showDisc: true,
+    syncColors: true,
+    waveColor: 'cyan',
+    visualizerStyle: 'mirrored'
   };
   try {
     const savedStr = localStorage.getItem('lyricsTextSettings');
@@ -360,6 +369,20 @@ function initSettingsUI() {
   bounceSlider.value = saved.bounceIntensity;
   bounceVal.textContent = `${parseFloat(saved.bounceIntensity).toFixed(1)}x`;
   spotlightToggleCheck.checked = !!saved.showSpotlight;
+
+  if (discToggleCheck) discToggleCheck.checked = saved.showDisc !== false;
+  if (syncColorsCheck) syncColorsCheck.checked = saved.syncColors !== false;
+  if (waveColorSelect) waveColorSelect.value = saved.waveColor || 'cyan';
+  if (visualizerStyleSelect) visualizerStyleSelect.value = saved.visualizerStyle || 'mirrored';
+
+  if (waveformColorGroup && syncColorsCheck) {
+    waveformColorGroup.style.display = syncColorsCheck.checked ? 'none' : 'block';
+  }
+
+  const deck = document.querySelector('.deck');
+  if (deck && discToggleCheck) {
+    deck.classList.toggle('no-disc', !discToggleCheck.checked);
+  }
 }
 
 function onSettingsChanged() {
@@ -368,7 +391,11 @@ function onSettingsChanged() {
     glowColor: glowColorSelect.value,
     textSize: parseFloat(textSizeSlider.value),
     bounceIntensity: parseFloat(bounceSlider.value),
-    showSpotlight: spotlightToggleCheck.checked
+    showSpotlight: spotlightToggleCheck.checked,
+    showDisc: discToggleCheck ? discToggleCheck.checked : true,
+    syncColors: syncColorsCheck ? syncColorsCheck.checked : true,
+    waveColor: waveColorSelect ? waveColorSelect.value : 'cyan',
+    visualizerStyle: visualizerStyleSelect ? visualizerStyleSelect.value : 'mirrored'
   };
   textSizeVal.textContent = `${settings.textSize.toFixed(2)}x`;
   bounceVal.textContent = `${settings.bounceIntensity.toFixed(1)}x`;
@@ -378,6 +405,15 @@ function onSettingsChanged() {
   if (lyricsVisualizer) {
     lyricsVisualizer.updateSettings(settings);
   }
+
+  if (waveformColorGroup) {
+    waveformColorGroup.style.display = settings.syncColors ? 'none' : 'block';
+  }
+
+  const deck = document.querySelector('.deck');
+  if (deck) {
+    deck.classList.toggle('no-disc', !settings.showDisc);
+  }
 }
 
 fontSelect.addEventListener('change', onSettingsChanged);
@@ -385,6 +421,11 @@ glowColorSelect.addEventListener('change', onSettingsChanged);
 textSizeSlider.addEventListener('input', onSettingsChanged);
 bounceSlider.addEventListener('input', onSettingsChanged);
 spotlightToggleCheck.addEventListener('change', onSettingsChanged);
+
+if (discToggleCheck) discToggleCheck.addEventListener('change', onSettingsChanged);
+if (syncColorsCheck) syncColorsCheck.addEventListener('change', onSettingsChanged);
+if (waveColorSelect) waveColorSelect.addEventListener('change', onSettingsChanged);
+if (visualizerStyleSelect) visualizerStyleSelect.addEventListener('change', onSettingsChanged);
 
 // Initialize settings right away
 initSettingsUI();
@@ -1353,8 +1394,10 @@ async function loadTrack(index, autoplay = true) {
 
   if (track.type === 'local') {
     if (track.file) {
+      audio.crossOrigin = 'anonymous';
       audio.src = URL.createObjectURL(track.file);
     } else {
+      audio.removeAttribute('crossorigin');
       audio.src = 'file://' + encodeURI(track.path.replace(/\\/g, '/'));
     }
 
@@ -1382,6 +1425,7 @@ async function loadTrack(index, autoplay = true) {
   } else {
     trackTitle.textContent = `Loading — ${track.name}`;
     disc.classList.remove('spinning');
+    audio.crossOrigin = 'anonymous';
     audio.removeAttribute('src');
 
     if (track.thumbnail) {
@@ -1411,6 +1455,7 @@ async function loadTrack(index, autoplay = true) {
       return;
     }
 
+    audio.crossOrigin = 'anonymous';
     audio.src = result.streamUrl;
 
     if (autoplay) {
@@ -1869,6 +1914,10 @@ document.addEventListener('keydown', (e) => {
   // Handle Escape key to close Cloud and Library panels even if search input is focused
   if (e.key === 'Escape' || e.code === 'Escape') {
     let closedAny = false;
+    if (isVisualizerActive) {
+      toggleWaveformVisualizer(false);
+      closedAny = true;
+    }
     if (cloudPanel.classList.contains('open')) {
       cloudPanel.classList.remove('open');
       cloudToggle.classList.remove('active');
@@ -1943,10 +1992,245 @@ document.addEventListener('keydown', (e) => {
       }
       break;
 
+    case 'KeyV':
+      e.preventDefault();
+      toggleWaveformVisualizer();
+      break;
+
     default:
       break;
   }
 });
+
+// ---------- Waveform Visualizer State & Core Logic ----------
+let isVisualizerActive = false;
+let visualizerAnimationId = null;
+
+const colorMap = {
+  gold: '#fac900',
+  cyan: '#00f0ff',
+  magenta: '#ff007f',
+  green: '#39ff14',
+  white: '#ffffff'
+};
+
+function syncWaveformTrackDetails() {
+  const waveTitle = document.getElementById('waveformTitle');
+  const waveArtist = document.getElementById('waveformArtist');
+  const trackTitle = document.getElementById('trackTitle');
+  const trackArtist = document.getElementById('trackArtist');
+  
+  if (waveTitle && trackTitle) {
+    waveTitle.textContent = trackTitle.textContent;
+  }
+  if (waveArtist && trackArtist) {
+    waveArtist.textContent = trackArtist.textContent || 'Unknown Artist';
+  }
+}
+
+// Observe track details element modifications to dynamically sync with visualizer
+const trackDetailsObserver = new MutationObserver(syncWaveformTrackDetails);
+const observerConfig = { childList: true, characterData: true, subtree: true };
+const targetTitle = document.getElementById('trackTitle');
+const targetArtist = document.getElementById('trackArtist');
+
+if (targetTitle) trackDetailsObserver.observe(targetTitle, observerConfig);
+if (targetArtist) trackDetailsObserver.observe(targetArtist, observerConfig);
+
+function startWaveformAnimation() {
+  const canvas = document.getElementById('waveformCanvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  
+  function draw() {
+    if (!isVisualizerActive) {
+      return;
+    }
+    
+    visualizerAnimationId = requestAnimationFrame(draw);
+    
+    if (!analyser) return;
+    
+    const bufferLen = analyser.frequencyBinCount;
+    const dataArrayFreq = new Uint8Array(bufferLen);
+    const dataArrayTime = new Uint8Array(bufferLen);
+    
+    analyser.getByteFrequencyData(dataArrayFreq);
+    analyser.getByteTimeDomainData(dataArrayTime);
+    
+    const width = canvas.clientWidth;
+    const height = canvas.clientHeight;
+    
+    if (width > 0 && height > 0) {
+      if (canvas.width !== width || canvas.height !== height) {
+        canvas.width = width;
+        canvas.height = height;
+      }
+    } else {
+      // Defer drawing until the element is fully laid out with non-zero dimensions
+      return;
+    }
+    
+    ctx.clearRect(0, 0, width, height);
+    
+    // Grab theme color from settings (sync or separate)
+    const syncColors = document.getElementById('syncColorsCheck')?.checked !== false;
+    let activeGlowKey = 'gold';
+    if (syncColors) {
+      activeGlowKey = document.getElementById('glowColorSelect')?.value || 'gold';
+    } else {
+      activeGlowKey = document.getElementById('waveColorSelect')?.value || 'cyan';
+    }
+    const activeColor = colorMap[activeGlowKey] || '#fac900';
+    
+    // Calculate bass average for subtle pulsing (first ~15% of the frequency buffer)
+    let bassSum = 0;
+    const bassBins = Math.max(1, Math.floor(bufferLen * 0.15));
+    for (let i = 0; i < bassBins; i++) {
+      bassSum += dataArrayFreq[i];
+    }
+    const bassAvg = bassSum / bassBins / 255.0; // 0..1 scale
+    
+    // Apply subtle pulse & glow to the track title text in sync with the bass
+    const waveTitle = document.getElementById('waveformTitle');
+    if (waveTitle) {
+      const scale = 1.0 + (bassAvg * 0.08); // Max 8% scale increase
+      waveTitle.style.transform = `scale(${scale})`;
+      waveTitle.style.transformOrigin = 'left center';
+      waveTitle.style.display = 'inline-block';
+      waveTitle.style.textShadow = `0 0 ${bassAvg * 15}px ${activeColor}`;
+      waveTitle.style.transition = 'transform 0.04s ease-out, text-shadow 0.04s ease-out';
+    }
+    
+    // 1. Draw Symmetric Frequency Bars (Background layer)
+    const barWidth = 3;
+    const barGap = 2;
+    const numBars = Math.min(60, Math.floor(width / (barWidth + barGap)));
+    const startX = (width - numBars * (barWidth + barGap)) / 2;
+    
+    ctx.save();
+    ctx.shadowBlur = 4;
+    ctx.shadowColor = activeColor;
+    
+    const visualizerStyle = document.getElementById('visualizerStyleSelect')?.value || 'mirrored';
+    
+    for (let i = 0; i < numBars; i++) {
+      let dataIdx;
+      // Skip very first bins (DC offset/empty sub-bass) so visualizer has full movement range
+      const startBin = 3; 
+      const maxFftBin = Math.floor(bufferLen * 0.5);
+      
+      if (visualizerStyle === 'mirrored') {
+        const half = numBars / 2;
+        const distFromCenter = Math.abs(i - half);
+        const percentOfHalf = distFromCenter / half;
+        dataIdx = startBin + Math.floor(percentOfHalf * (maxFftBin - startBin));
+      } else {
+        dataIdx = startBin + Math.floor((i / numBars) * (maxFftBin - startBin));
+      }
+      
+      const value = dataArrayFreq[dataIdx] || 0;
+      const percent = value / 255;
+      
+      const barHeight = percent * (height * 0.7);
+      const x = startX + i * (barWidth + barGap);
+      const y = (height - barHeight) / 2;
+      
+      const grad = ctx.createLinearGradient(x, y, x, y + barHeight);
+      grad.addColorStop(0, activeColor);
+      grad.addColorStop(1, 'rgba(0, 0, 0, 0.05)');
+      
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      if (ctx.roundRect) {
+        ctx.roundRect(x, y, barWidth, barHeight, 1.5);
+      } else {
+        ctx.rect(x, y, barWidth, barHeight);
+      }
+      ctx.fill();
+    }
+    ctx.restore();
+    
+    // 2. Draw Floating Oscilloscope Sine Wave (Foreground layer)
+    ctx.save();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#ffffff';
+    ctx.shadowBlur = 8;
+    ctx.shadowColor = activeColor;
+    
+    ctx.beginPath();
+    const sliceWidth = width / bufferLen;
+    let x = 0;
+    
+    for (let i = 0; i < bufferLen; i++) {
+      const v = dataArrayTime[i] / 128.0;
+      const y = (v * height) / 2;
+      
+      if (i === 0) {
+        ctx.moveTo(x, y);
+      } else {
+        ctx.lineTo(x, y);
+      }
+      x += sliceWidth;
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+  
+  draw();
+}
+
+const deckMain = document.querySelector('.deck-main');
+const waveToggleBtn = document.getElementById('waveToggleBtn');
+const closeWaveformBtn = document.getElementById('closeWaveformBtn');
+
+function toggleWaveformVisualizer(forceState) {
+  const nextActive = (typeof forceState === 'boolean') ? forceState : !isVisualizerActive;
+  
+  if (nextActive === isVisualizerActive) return;
+  
+  if (nextActive) {
+    if (audioCtx && audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+    
+    deckMain.classList.add('visualizer-active');
+    if (waveToggleBtn) waveToggleBtn.classList.add('active');
+    
+    syncWaveformTrackDetails();
+    
+    isVisualizerActive = true;
+    startWaveformAnimation();
+  } else {
+    deckMain.classList.remove('visualizer-active');
+    if (waveToggleBtn) waveToggleBtn.classList.remove('active');
+    
+    isVisualizerActive = false;
+    if (visualizerAnimationId) {
+      cancelAnimationFrame(visualizerAnimationId);
+      visualizerAnimationId = null;
+    }
+    
+    const waveTitle = document.getElementById('waveformTitle');
+    if (waveTitle) {
+      waveTitle.style.transform = '';
+      waveTitle.style.textShadow = '';
+    }
+  }
+}
+
+// Wire up events
+if (waveToggleBtn) {
+  waveToggleBtn.addEventListener('click', () => {
+    toggleWaveformVisualizer();
+  });
+}
+
+if (closeWaveformBtn) {
+  closeWaveformBtn.addEventListener('click', () => {
+    toggleWaveformVisualizer(false);
+  });
+}
 
 // ---------- Initialization ----------
 if (window.api) {
