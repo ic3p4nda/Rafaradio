@@ -2083,18 +2083,16 @@ function startWaveformAnimation() {
     }
     const activeColor = colorMap[activeGlowKey] || '#fac900';
     
-    // Calculate bass average for subtle pulsing (first ~15% of the frequency buffer)
     let bassSum = 0;
     const bassBins = Math.max(1, Math.floor(bufferLen * 0.15));
     for (let i = 0; i < bassBins; i++) {
       bassSum += dataArrayFreq[i];
     }
-    const bassAvg = bassSum / bassBins / 255.0; // 0..1 scale
+    const bassAvg = bassSum / bassBins / 255.0;
     
-    // Apply subtle pulse & glow to the track title text in sync with the bass
     const waveTitle = document.getElementById('waveformTitle');
     if (waveTitle) {
-      const scale = 1.0 + (bassAvg * 0.08); // Max 8% scale increase
+      const scale = 1.0 + (bassAvg * 0.1);
       waveTitle.style.transform = `scale(${scale})`;
       waveTitle.style.transformOrigin = 'left center';
       waveTitle.style.display = 'inline-block';
@@ -2102,10 +2100,9 @@ function startWaveformAnimation() {
       waveTitle.style.transition = 'transform 0.04s ease-out, text-shadow 0.04s ease-out';
     }
     
-    // 1. Draw Symmetric Frequency Bars (Background layer)
     const barWidth = 3;
-    const barGap = 2;
-    const numBars = Math.min(60, Math.floor(width / (barWidth + barGap)));
+    const barGap = 3;
+    const numBars = Math.floor(width / (barWidth + barGap)) - 2;
     const startX = (width - numBars * (barWidth + barGap)) / 2;
     
     ctx.save();
@@ -2116,7 +2113,7 @@ function startWaveformAnimation() {
     
     for (let i = 0; i < numBars; i++) {
       let dataIdx;
-      // Skip very first bins (DC offset/empty sub-bass) so visualizer has full movement range
+
       const startBin = 3; 
       const maxFftBin = Math.floor(bufferLen * 0.5);
       
