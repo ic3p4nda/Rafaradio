@@ -6,7 +6,7 @@ contextBridge.exposeInMainWorld('api', {
   openAudioFiles: () => ipcRenderer.invoke('open-audio-files'),
   getTrackMetadata: (filePath) => ipcRenderer.invoke('get-track-metadata', filePath),
   youtubeSearch: (query) => ipcRenderer.invoke('youtube-search', query),
-  youtubePrepareStream: (videoId) => ipcRenderer.invoke('youtube-prepare-stream', videoId),
+  youtubePrepareStream: (videoId, force) => ipcRenderer.invoke('youtube-prepare-stream', videoId, force),
   youtubeImportPlaylist: (playlistUrl) => ipcRenderer.invoke('youtube-import-playlist', playlistUrl),
   youtubeImportLikedSongs: (accessToken) => ipcRenderer.invoke('youtube-import-liked', accessToken),
   fetchLyrics: (title, artist) => ipcRenderer.invoke('fetch-lyrics', title, artist),

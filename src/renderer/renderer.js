@@ -2,8 +2,6 @@ import * as THREE from 'three';
 import { OrbitControls } from './vendor/OrbitControls.js';
 import LyricsVisualizer, { normalizeLyricLines } from './lyrics-visualizer.js';
 import LyricsSyncController from './lyrics-sync.js';
-import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
-import { getAuth, signInWithPopup, GoogleAuthProvider } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js';
 
 // ---------- State ----------
 const SVG_ICONS = {
@@ -22,6 +20,7 @@ const SVG_ICONS = {
 const playlist = []; // Active play queue
 let currentIndex = -1;
 let activeTrackLoadId = 0;
+let playbackRetryCount = 0;
 
 let isShuffle = localStorage.getItem('userShufflePreference') === 'true';
 let repeatMode = localStorage.getItem('userRepeatPreference') || 'off'; // 'off', 'all', 'one'
@@ -301,6 +300,16 @@ const waveformColorGroup = document.getElementById('waveformColorGroup');
 const waveColorSelect = document.getElementById('waveColorSelect');
 const visualizerStyleSelect = document.getElementById('visualizerStyleSelect');
 
+// New Settings DOM Elements
+const particleColor1Select = document.getElementById('particleColor1Select');
+const particleColor2Select = document.getElementById('particleColor2Select');
+const driftSpeedSlider = document.getElementById('driftSpeedSlider');
+const driftSpeedVal = document.getElementById('driftSpeedVal');
+const playbackSpeedSelect = document.getElementById('playbackSpeedSelect');
+const sleepTimerSelect = document.getElementById('sleepTimerSelect');
+const sleepTimerRemaining = document.getElementById('sleepTimerRemaining');
+const crossfadeToggleCheck = document.getElementById('crossfadeToggleCheck');
+
 // Lyrics state
 let lyricsVisualizer = null;
 let lyricsSyncController = null;
@@ -342,6 +351,168 @@ settingsToggle.addEventListener('click', () => {
   settingsToggle.classList.toggle('active', !isOpen);
 });
 
+// Toast notification helper
+function showNotificationToast(message) {
+  let toast = document.getElementById('toastNotification');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'toastNotification';
+    toast.style.cssText = `
+      position: absolute;
+      bottom: 120px;
+      left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      background: rgba(12, 12, 20, 0.85);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-size: 12px;
+      padding: 8px 16px;
+      border-radius: 99px;
+      z-index: 2000;
+      opacity: 0;
+      pointer-events: none;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+      transition: opacity 0.3s ease, transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    `;
+    document.body.appendChild(toast);
+  }
+  toast.textContent = message;
+  toast.style.opacity = '1';
+  toast.style.transform = 'translateX(-50%) translateY(0)';
+  
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transform = 'translateX(-50%) translateY(20px)';
+  }, 3500);
+}
+
+// Volume crossfade (smooth volume fade in/out) helper
+let crossfadeInterval = null;
+const CROSSFADE_DURATION = 400; // 400ms
+
+function fadeVolumeTo(targetVolume, durationMs, callback) {
+  if (crossfadeInterval) clearInterval(crossfadeInterval);
+  
+  const startVolume = audio.volume;
+  const difference = targetVolume - startVolume;
+  const stepTime = 20; // 20ms steps
+  const totalSteps = durationMs / stepTime;
+  let currentStep = 0;
+
+  crossfadeInterval = setInterval(() => {
+    currentStep++;
+    const fraction = currentStep / totalSteps;
+    const newVol = startVolume + difference * fraction;
+    audio.volume = Math.max(0, Math.min(1, newVol));
+
+    if (currentStep >= totalSteps) {
+      clearInterval(crossfadeInterval);
+      audio.volume = targetVolume;
+      if (callback) callback();
+    }
+  }, stepTime);
+}
+
+async function playWithFade() {
+  const targetVol = parseFloat(volumeBar.value);
+  const enableFade = crossfadeToggleCheck ? crossfadeToggleCheck.checked : true;
+  if (enableFade) {
+    audio.volume = 0;
+    await audio.play();
+    fadeVolumeTo(targetVol, CROSSFADE_DURATION);
+  } else {
+    audio.volume = targetVol;
+    await audio.play();
+  }
+}
+
+function pauseWithFade() {
+  const enableFade = crossfadeToggleCheck ? crossfadeToggleCheck.checked : true;
+  if (enableFade) {
+    fadeVolumeTo(0, CROSSFADE_DURATION, () => {
+      audio.pause();
+      audio.volume = parseFloat(volumeBar.value);
+    });
+  } else {
+    audio.pause();
+  }
+}
+
+// Sleep Timer State & Logic
+let sleepTimerTimeout = null;
+let sleepTimerInterval = null;
+let sleepTimerEndTime = null;
+
+function startSleepTimer(minutes) {
+  clearSleepTimer();
+  if (minutes <= 0) return;
+
+  sleepTimerEndTime = Date.now() + minutes * 60000;
+  if (sleepTimerRemaining) {
+    sleepTimerRemaining.style.display = 'block';
+    updateSleepTimerUI();
+  }
+  
+  sleepTimerInterval = setInterval(updateSleepTimerUI, 1000);
+
+  sleepTimerTimeout = setTimeout(() => {
+    pauseWithFade();
+    stopPlaybackUI(); 
+    clearSleepTimer();
+    if (sleepTimerSelect) sleepTimerSelect.value = "0";
+    showNotificationToast("Sleep timer finished: Playback paused.");
+  }, minutes * 60000);
+}
+
+function clearSleepTimer() {
+  if (sleepTimerTimeout) clearTimeout(sleepTimerTimeout);
+  if (sleepTimerInterval) clearInterval(sleepTimerInterval);
+  sleepTimerTimeout = null;
+  sleepTimerInterval = null;
+  sleepTimerEndTime = null;
+  if (sleepTimerRemaining) {
+    sleepTimerRemaining.style.display = 'none';
+    sleepTimerRemaining.textContent = '';
+  }
+}
+
+function updateSleepTimerUI() {
+  if (!sleepTimerEndTime) return;
+  const remainingMs = sleepTimerEndTime - Date.now();
+  if (remainingMs <= 0) {
+    clearSleepTimer();
+    return;
+  }
+  const totalSecs = Math.ceil(remainingMs / 1000);
+  const m = Math.floor(totalSecs / 60);
+  const s = totalSecs % 60;
+  if (sleepTimerRemaining) {
+    sleepTimerRemaining.textContent = `Pausing in ${m}:${s.toString().padStart(2, '0')}`;
+  }
+}
+
+const PARTICLE_COLORS_MAP = {
+  gold: '#fac900',
+  cyan: '#00ffff',
+  magenta: '#ff00ff',
+  green: '#39ff14',
+  white: '#ffffff',
+  red: '#ff3333',
+  blue: '#008aff',
+  purple: '#9d00ff',
+  orange: '#ff6c00'
+};
+
+// Re-apply playback speed on play source change
+audio.addEventListener('canplay', () => {
+  if (playbackSpeedSelect) {
+    const rate = parseFloat(playbackSpeedSelect.value);
+    audio.playbackRate = Number.isFinite(rate) && rate > 0 ? rate : 1.0;
+  }
+});
+
 // Load and initialize settings values in UI
 function initSettingsUI() {
   let saved = {
@@ -353,7 +524,13 @@ function initSettingsUI() {
     showDisc: true,
     syncColors: true,
     waveColor: 'cyan',
-    visualizerStyle: 'mirrored'
+    visualizerStyle: 'mirrored',
+    particleColorPrimary: 'gold',
+    particleColorSecondary: 'blue',
+    driftSpeed: 1.0,
+    playbackSpeed: 1.0,
+    sleepTimer: 0,
+    crossfade: true
   };
   try {
     const savedStr = localStorage.getItem('lyricsTextSettings');
@@ -375,6 +552,37 @@ function initSettingsUI() {
   if (waveColorSelect) waveColorSelect.value = saved.waveColor || 'cyan';
   if (visualizerStyleSelect) visualizerStyleSelect.value = saved.visualizerStyle || 'mirrored';
 
+  // Apply new settings
+  if (particleColor1Select) particleColor1Select.value = saved.particleColorPrimary || 'gold';
+  if (particleColor2Select) particleColor2Select.value = saved.particleColorSecondary || 'blue';
+  if (driftSpeedSlider) {
+    driftSpeedSlider.value = saved.driftSpeed !== undefined ? saved.driftSpeed : 1.0;
+    driftSpeedVal.textContent = `${parseFloat(driftSpeedSlider.value).toFixed(1)}x`;
+  }
+  if (playbackSpeedSelect) {
+    playbackSpeedSelect.value = saved.playbackSpeed !== undefined ? saved.playbackSpeed : 1.0;
+    const rate = parseFloat(playbackSpeedSelect.value);
+    audio.playbackRate = Number.isFinite(rate) && rate > 0 ? rate : 1.0;
+  }
+  if (sleepTimerSelect) {
+    sleepTimerSelect.value = saved.sleepTimer !== undefined ? saved.sleepTimer : 0;
+    startSleepTimer(parseInt(sleepTimerSelect.value));
+  }
+  if (crossfadeToggleCheck) {
+    crossfadeToggleCheck.checked = saved.crossfade !== false;
+  }
+
+  // Update Three.js particle colors live
+  if (goldColor && PARTICLE_COLORS_MAP[saved.particleColorPrimary]) {
+    goldColor.set(PARTICLE_COLORS_MAP[saved.particleColorPrimary]);
+  }
+  if (blueColor && PARTICLE_COLORS_MAP[saved.particleColorSecondary]) {
+    blueColor.set(PARTICLE_COLORS_MAP[saved.particleColorSecondary]);
+  }
+  if (cameraControls && saved.driftSpeed !== undefined) {
+    cameraControls.autoRotateSpeed = 0.4 * parseFloat(saved.driftSpeed);
+  }
+
   if (waveformColorGroup && syncColorsCheck) {
     waveformColorGroup.style.display = syncColorsCheck.checked ? 'none' : 'block';
   }
@@ -395,10 +603,19 @@ function onSettingsChanged() {
     showDisc: discToggleCheck ? discToggleCheck.checked : true,
     syncColors: syncColorsCheck ? syncColorsCheck.checked : true,
     waveColor: waveColorSelect ? waveColorSelect.value : 'cyan',
-    visualizerStyle: visualizerStyleSelect ? visualizerStyleSelect.value : 'mirrored'
+    visualizerStyle: visualizerStyleSelect ? visualizerStyleSelect.value : 'mirrored',
+    particleColorPrimary: particleColor1Select ? particleColor1Select.value : 'gold',
+    particleColorSecondary: particleColor2Select ? particleColor2Select.value : 'blue',
+    driftSpeed: driftSpeedSlider ? parseFloat(driftSpeedSlider.value) : 1.0,
+    playbackSpeed: playbackSpeedSelect ? parseFloat(playbackSpeedSelect.value) : 1.0,
+    sleepTimer: sleepTimerSelect ? parseInt(sleepTimerSelect.value) : 0,
+    crossfade: crossfadeToggleCheck ? crossfadeToggleCheck.checked : true
   };
   textSizeVal.textContent = `${settings.textSize.toFixed(2)}x`;
   bounceVal.textContent = `${settings.bounceIntensity.toFixed(1)}x`;
+  if (driftSpeedVal && driftSpeedSlider) {
+    driftSpeedVal.textContent = `${parseFloat(driftSpeedSlider.value).toFixed(1)}x`;
+  }
 
   localStorage.setItem('lyricsTextSettings', JSON.stringify(settings));
 
@@ -414,6 +631,21 @@ function onSettingsChanged() {
   if (deck) {
     deck.classList.toggle('no-disc', !settings.showDisc);
   }
+
+  // Update Three.js particle properties live
+  if (goldColor && PARTICLE_COLORS_MAP[settings.particleColorPrimary]) {
+    goldColor.set(PARTICLE_COLORS_MAP[settings.particleColorPrimary]);
+  }
+  if (blueColor && PARTICLE_COLORS_MAP[settings.particleColorSecondary]) {
+    blueColor.set(PARTICLE_COLORS_MAP[settings.particleColorSecondary]);
+  }
+  if (cameraControls) {
+    cameraControls.autoRotateSpeed = 0.4 * settings.driftSpeed;
+  }
+  if (audio) {
+    const rate = parseFloat(settings.playbackSpeed);
+    audio.playbackRate = Number.isFinite(rate) && rate > 0 ? rate : 1.0;
+  }
 }
 
 fontSelect.addEventListener('change', onSettingsChanged);
@@ -427,8 +659,18 @@ if (syncColorsCheck) syncColorsCheck.addEventListener('change', onSettingsChange
 if (waveColorSelect) waveColorSelect.addEventListener('change', onSettingsChanged);
 if (visualizerStyleSelect) visualizerStyleSelect.addEventListener('change', onSettingsChanged);
 
-// Initialize settings right away
-initSettingsUI();
+// New Settings event listeners
+if (particleColor1Select) particleColor1Select.addEventListener('change', onSettingsChanged);
+if (particleColor2Select) particleColor2Select.addEventListener('change', onSettingsChanged);
+if (driftSpeedSlider) driftSpeedSlider.addEventListener('input', onSettingsChanged);
+if (playbackSpeedSelect) playbackSpeedSelect.addEventListener('change', onSettingsChanged);
+if (sleepTimerSelect) {
+  sleepTimerSelect.addEventListener('change', () => {
+    onSettingsChanged();
+    startSleepTimer(parseInt(sleepTimerSelect.value));
+  });
+}
+if (crossfadeToggleCheck) crossfadeToggleCheck.addEventListener('change', onSettingsChanged);
 
 // ---------- Lyrics toggle (renders into particle space) ----------
 lyricsToggle.addEventListener('click', async () => {
@@ -1081,7 +1323,7 @@ newPlaylistSave.addEventListener('click', () => {
   const name = newPlaylistInput.value.trim();
   if (!name) return;
   if (playlists[name]) {
-    alert('A playlist with this name already exists.');
+    showNotificationToast('A playlist with this name already exists.');
     return;
   }
   playlists[name] = [];
@@ -1106,6 +1348,9 @@ async function getFirebaseAuth() {
     const res = await fetch('/api/firebase-config');
     if (!res.ok) throw new Error('Could not load Firebase configuration.');
     const firebaseConfig = await res.json();
+    
+    const { initializeApp } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js');
+    const { getAuth, GoogleAuthProvider } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js');
     
     const app = initializeApp(firebaseConfig);
     firebaseAuth = getAuth(app);
@@ -1152,6 +1397,7 @@ importLikedAuthBtn.addEventListener('click', async () => {
       
       importLikedStatus.textContent = 'Opening Google Sign-in popup...';
       
+      const { signInWithPopup, GoogleAuthProvider } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js');
       const result = await signInWithPopup(auth, googleProvider);
       const credential = GoogleAuthProvider.credentialFromResult(result);
       if (!credential || !credential.accessToken) {
@@ -1328,19 +1574,20 @@ addActiveTrackBtn.addEventListener('click', () => {
   if (!currentViewedPlaylist) return;
   const activeTrack = playlist[currentIndex];
   if (!activeTrack) {
-    alert('No track is currently playing.');
+    showNotificationToast('No track is currently playing.');
     return;
   }
   
   const list = playlists[currentViewedPlaylist];
   if (list.some(t => isSameTrack(t, activeTrack))) {
-    alert('This track is already in the playlist.');
+    showNotificationToast('This track is already in the playlist.');
     return;
   }
   
   list.push(activeTrack);
   savePlaylistsToStorage();
   renderPlaylistDetail();
+  showNotificationToast(`Added "${activeTrack.name}" to ${currentViewedPlaylist}.`);
 });
 
 deletePlaylistBtn.addEventListener('click', () => {
@@ -1370,6 +1617,7 @@ addToPlaylistModal.addEventListener('click', (e) => {
 async function loadTrack(index, autoplay = true) {
   if (index < 0 || index >= playlist.length) return;
 
+  playbackRetryCount = 0; // Reset retry count for the new track
   const trackLoadId = ++activeTrackLoadId;
   currentIndex = index;
   savePlaySession();
@@ -1403,7 +1651,7 @@ async function loadTrack(index, autoplay = true) {
 
     if (autoplay) {
       try {
-        await audio.play();
+        await playWithFade();
         if (trackLoadId !== activeTrackLoadId) return;
         startPlaybackUI();
       } catch (err) {
@@ -1460,7 +1708,7 @@ async function loadTrack(index, autoplay = true) {
 
     if (autoplay) {
       try {
-        await audio.play();
+        await playWithFade();
         if (trackLoadId !== activeTrackLoadId) return;
         trackTitle.textContent = track.name;
         startPlaybackUI();
@@ -1536,10 +1784,10 @@ playBtn.addEventListener('click', async () => {
 
   try {
     if (audio.paused) {
-      await audio.play();
+      await playWithFade();
       startPlaybackUI();
     } else {
-      audio.pause();
+      pauseWithFade();
       stopPlaybackUI();
     }
   } catch (err) {
@@ -1702,8 +1950,40 @@ audio.addEventListener('ended', () => {
   playNextTrack(true);
 });
 
-audio.addEventListener('error', () => {
+const MAX_PLAYBACK_RETRIES = 1;
+
+audio.addEventListener('error', async () => {
+  const currentTrack = playlist[currentIndex];
+  if (!currentTrack) return;
+
+  if (currentTrack.type === 'youtube' && playbackRetryCount < MAX_PLAYBACK_RETRIES) {
+    playbackRetryCount++;
+    console.warn(`Audio playback error. Retrying stream using forced resolver (${playbackRetryCount}/${MAX_PLAYBACK_RETRIES}) for videoId: ${currentTrack.videoId}`);
+    
+    trackTitle.textContent = `Reconnecting... (${playbackRetryCount}/${MAX_PLAYBACK_RETRIES})`;
+    
+    preloadedStreams.delete(currentTrack.videoId);
+    
+    try {
+      const freshResultPromise = window.api.youtubePrepareStream(currentTrack.videoId, true);
+      preloadedStreams.set(currentTrack.videoId, freshResultPromise);
+      
+      const result = await freshResultPromise;
+      if (result && result.streamUrl) {
+        audio.crossOrigin = 'anonymous';
+        audio.src = result.streamUrl;
+        await audio.play();
+        trackTitle.textContent = currentTrack.name;
+        startPlaybackUI();
+        return;
+      }
+    } catch (err) {
+      console.error('Forced playback retry failed:', err);
+    }
+  }
+
   stopPlaybackUI();
+  playbackRetryCount = 0;
   if (playlist[currentIndex]) {
     trackTitle.textContent = `Playback error — ${playlist[currentIndex].name}`;
   }
@@ -1859,6 +2139,10 @@ window.addEventListener('mouseup', () => (particleCanvas.style.cursor = 'grab'))
 const goldColor = new THREE.Color('#fac900');
 const blueColor = new THREE.Color('#008aff');
 const mixedColor = new THREE.Color();
+
+// Initialize settings right away — must happen after the particle scene
+// above exists, since initSettingsUI() reads goldColor/blueColor/cameraControls.
+initSettingsUI();
 
 function resizeParticles() {
   renderer3D.setSize(window.innerWidth, window.innerHeight);

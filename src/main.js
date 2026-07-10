@@ -64,7 +64,7 @@ function createWindow() {
     mainWindow.webContents.send('window-fullscreen-state', false);
   });
 
-  // mainWindow.webContents.openDevTools();
+  mainWindow.webContents.openDevTools();
 }
 
 app.whenReady().then(() => {
@@ -205,12 +205,261 @@ app.on('before-quit', () => {
   }
 });
 
-ipcMain.handle('youtube-prepare-stream', async (event, videoId) => {
+const PIPED_INSTANCES = [
+  'https://pipedapi.kavin.rocks',
+  'https://piped-api.lunar.icu',
+  'https://api.piped.yt',
+  'https://piped-api.glg.id',
+  'https://piped-api.rirsh.de',
+  'https://piped-api.privacydev.net',
+  'https://pipedapi.tokhmi.xyz',
+  'https://piped-api.ch7.io',
+  'https://pipedapi.leptons.xyz',
+  'https://pipedapi.colby.rat',
+  'https://piped-api.swish-swish.xyz'
+];
+
+const COBALT_INSTANCES = [
+  'https://api.cobalt.tools/api/json',
+  'https://cobalt.as93.net/api/json'
+];
+
+function requestJson(url, options = {}, timeoutMs = 4000) {
+  return new Promise((resolve, reject) => {
+    let timer;
+    try {
+      const urlObj = new URL(url);
+      const reqOptions = {
+        method: options.method || 'GET',
+        hostname: urlObj.hostname,
+        port: urlObj.port || 443,
+        path: urlObj.pathname + urlObj.search,
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          ...(options.headers || {})
+        },
+        timeout: timeoutMs
+      };
+
+      const req = https.request(reqOptions, (res) => {
+        clearTimeout(timer);
+        let data = '';
+        res.on('data', (chunk) => data += chunk);
+        res.on('end', () => {
+          if (res.statusCode < 200 || res.statusCode >= 300) {
+            return reject(new Error(`Status: ${res.statusCode}`));
+          }
+          try {
+            const parsed = JSON.parse(data);
+            resolve(parsed);
+          } catch (e) {
+            reject(new Error(`Failed to parse JSON: ${e.message}`));
+          }
+        });
+      });
+
+      req.on('error', (err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+
+      req.on('timeout', () => {
+        req.destroy();
+        reject(new Error('Request timed out'));
+      });
+
+      if (options.body) {
+        req.write(typeof options.body === 'string' ? options.body : JSON.stringify(options.body));
+      }
+
+      req.end();
+
+      timer = setTimeout(() => {
+        req.destroy();
+        reject(new Error('Request timed out'));
+      }, timeoutMs);
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+async function fetchStreamFromCobalt(videoId) {
+  const url = `https://www.youtube.com/watch?v=${videoId}`;
+  const payload = {
+    url: url,
+    downloadMode: 'audio',
+    audioFormat: 'mp3',
+    audioQuality: 'best'
+  };
+
+  for (const instance of COBALT_INSTANCES) {
+    try {
+      console.log(`Trying Cobalt resolution on: ${instance} for videoId: ${videoId}`);
+      const res = await requestJson(instance, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: payload
+      }, 3500);
+
+      if (res && (res.status === 'stream' || res.status === 'redirect') && res.url) {
+        console.log(`Cobalt resolution succeeded via ${instance}`);
+        return { streamUrl: res.url };
+      }
+    } catch (err) {
+      console.warn(`Cobalt instance ${instance} failed:`, err.message);
+    }
+  }
+  return null;
+}
+
+async function fetchStreamFromPiped(videoId) {
+  const shuffled = [...PIPED_INSTANCES].sort(() => 0.5 - Math.random());
+  const candidates = shuffled.slice(0, 4);
+
+  const attemptInstance = async (instance) => {
+    try {
+      const data = await requestJson(`${instance}/streams/${videoId}`, {}, 3000);
+      if (data && data.audioStreams && data.audioStreams.length > 0) {
+        const streams = data.audioStreams.filter(s => s.url);
+        if (streams.length > 0) {
+          streams.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
+          return {
+            streamUrl: streams[0].url,
+            title: data.title,
+            duration: data.duration,
+            thumbnail: data.thumbnailUrl,
+            instance: instance
+          };
+        }
+      }
+      throw new Error(`Instance ${instance} returned no audio streams`);
+    } catch (err) {
+      throw err;
+    }
+  };
+
+  try {
+    const result = await Promise.any(candidates.map(candidate => attemptInstance(candidate)));
+    console.log(`Piped resolution succeeded via ${result.instance} for videoId: ${videoId}`);
+    return result;
+  } catch (err) {
+    console.warn(`Piped resolution race failed for videoId: ${videoId}. Errors:`, err);
+    const remaining = shuffled.slice(4);
+    for (const candidate of remaining) {
+      try {
+        const res = await attemptInstance(candidate);
+        console.log(`Piped resolution succeeded on fallback candidate ${candidate} for videoId: ${videoId}`);
+        return res;
+      } catch (e) {
+        console.warn(`Fallback candidate ${candidate} failed:`, e.message);
+      }
+    }
+  }
+  return null;
+}
+
+async function importPlaylistFromPiped(playlistId) {
+  const shuffled = [...PIPED_INSTANCES].sort(() => 0.5 - Math.random());
+  const candidates = shuffled.slice(0, 3);
+
+  const attemptInstance = async (instance) => {
+    try {
+      const data = await requestJson(`${instance}/playlists/${playlistId}`, {}, 4000);
+      if (data && data.relatedStreams && data.relatedStreams.length > 0) {
+        const title = data.name || 'Imported Playlist';
+        const tracks = data.relatedStreams
+          .filter(item => item && item.url)
+          .map(item => {
+            let videoId = '';
+            try {
+              if (item.url.includes('?v=')) {
+                videoId = item.url.split('?v=')[1].split('&')[0];
+              } else {
+                videoId = item.url.replace('/watch?v=', '');
+              }
+            } catch (e) {}
+
+            if (!videoId) return null;
+
+            return {
+              type: 'youtube',
+              videoId: videoId,
+              name: item.title || 'Untitled Song',
+              artist: item.uploaderName || 'Unknown Artist',
+              thumbnail: item.thumbnail || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`
+            };
+          })
+          .filter(Boolean);
+
+        if (tracks.length > 0) {
+          return {
+            title: title,
+            tracks: tracks,
+            instance: instance
+          };
+        }
+      }
+      throw new Error(`Instance ${instance} returned no valid playlist tracks`);
+    } catch (err) {
+      throw err;
+    }
+  };
+
+  try {
+    const result = await Promise.any(candidates.map(candidate => attemptInstance(candidate)));
+    console.log(`Piped playlist import succeeded via ${result.instance} for playlistId: ${playlistId}`);
+    return result;
+  } catch (err) {
+    console.warn(`Piped playlist import race failed for playlistId: ${playlistId}. Errors:`, err);
+    const remaining = shuffled.slice(3);
+    for (const candidate of remaining) {
+      try {
+        const res = await attemptInstance(candidate);
+        console.log(`Piped playlist import succeeded on fallback candidate ${candidate} for playlistId: ${playlistId}`);
+        return res;
+      } catch (e) {
+        console.warn(`Fallback playlist candidate ${candidate} failed:`, e.message);
+      }
+    }
+  }
+  return null;
+}
+
+ipcMain.handle('youtube-prepare-stream', async (event, videoId, force) => {
   if (!videoId || typeof videoId !== 'string') {
     return { error: 'No video selected.' };
   }
 
+  const forceYtDlp = force === true;
+
+  // 1. Try fast providers first (skip if force requested)
+  if (!forceYtDlp) {
+    // 1a. Cobalt (Instant stream, high availability)
+    try {
+      const cobaltStream = await fetchStreamFromCobalt(videoId);
+      if (cobaltStream && cobaltStream.streamUrl) {
+        return { streamUrl: cobaltStream.streamUrl };
+      }
+    } catch (err) {
+      console.warn(`Cobalt resolution failed for ${videoId}:`, err.message);
+    }
+
+    // 1b. Piped (Parallel raced request over reliable instances)
+    try {
+      const pipedStream = await fetchStreamFromPiped(videoId);
+      if (pipedStream && pipedStream.streamUrl) {
+        return { streamUrl: pipedStream.streamUrl };
+      }
+    } catch (err) {
+      console.warn(`Piped streaming resolution failed in Electron for ${videoId}:`, err.message);
+    }
+  }
+
+  // 2. Fallback to yt-dlp
   try {
+    console.log(`Bypassing/falling back to yt-dlp in Electron for videoId: ${videoId}`);
     await ensureYtDlp();
 
     const info = await ytDlpWrap.getVideoInfo([
@@ -255,23 +504,39 @@ ipcMain.handle('youtube-import-playlist', async (event, playlistUrl) => {
   }
 
   const trimmed = playlistUrl.trim();
-  let targetUrl = trimmed;
+  let playlistId = trimmed;
 
-  // If only the ID is provided, build a URL
+  // If only the ID is provided, keep it, otherwise parse list ID from query string
   if (/^[A-Za-z0-9_-]{18,34}$/.test(trimmed)) {
-    targetUrl = `https://www.youtube.com/playlist?list=${trimmed}`;
+    playlistId = trimmed;
   } else {
     try {
-      new URL(trimmed);
+      const parsed = new URL(trimmed);
+      playlistId = parsed.searchParams.get('list') || trimmed;
     } catch (e) {
       return { error: 'Invalid URL. Please enter a valid YouTube or YouTube Music playlist URL.' };
     }
   }
 
+  // 1. Try Piped Playlist Importer first (lightning fast!)
   try {
+    const pipedPlaylist = await importPlaylistFromPiped(playlistId);
+    if (pipedPlaylist && pipedPlaylist.tracks && pipedPlaylist.tracks.length > 0) {
+      return {
+        title: pipedPlaylist.title,
+        tracks: pipedPlaylist.tracks
+      };
+    }
+  } catch (err) {
+    console.warn(`Piped playlist import failed in Electron for list ${playlistId}, falling back to yt-dlp...`, err);
+  }
+
+  // 2. Fallback to yt-dlp
+  try {
+    console.log(`Bypassing/falling back to yt-dlp playlist extraction in Electron for list: ${playlistId}`);
     await ensureYtDlp();
 
-    console.log(`Importing playlist from: ${targetUrl}`);
+    const targetUrl = `https://www.youtube.com/playlist?list=${playlistId}`;
     const stdout = await ytDlpWrap.execPromise([
       targetUrl,
       '--flat-playlist',

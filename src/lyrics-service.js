@@ -196,34 +196,31 @@ async function fetchLyrics(title, artist) {
   try {
     const safeTitle = title || 'Unknown Title';
     const safeArtist = artist || 'Unknown Artist';
-    console.log(`Fetching lyrics for: "${safeTitle}" by "${safeArtist}"`);
+    console.log(`Fetching lyrics for "${safeTitle}" by "${safeArtist}"`);
 
-    // 1. Try LRCLIB
     const lrclibLyrics = await fetchFromLrcLib(safeTitle, safeArtist);
     if (lrclibLyrics) {
       const source = Array.isArray(lrclibLyrics) && lrclibLyrics.length && typeof lrclibLyrics[0] === 'object'
         ? 'LRCLIB synced lyrics'
         : 'LRCLIB plain lyrics';
-      console.log(`✓ Got ${lrclibLyrics.length} lines from ${source}`);
+      console.log(`Got ${lrclibLyrics.length} lines from ${source}`);
       return lrclibLyrics;
     }
 
-    // 2. Backup: Try Textyl for Synced Lyrics
-    console.log('Trying backup Textyl API...');
+    console.log('Trying backup Textyl API');
     const textylLyrics = await fetchFromTextyl(safeTitle, safeArtist);
     if (textylLyrics && textylLyrics.length > 0) {
-      console.log(`✓ Got ${textylLyrics.length} synced lines from Textyl API`);
+      console.log(`Got ${textylLyrics.length} synced lines from Textyl API`);
       return textylLyrics;
     }
 
-    // 3. Fallback: Try Lyrics.ovh for plain text
     const lyricsOvhLyrics = await fetchFromLyricsOvh(safeTitle, safeArtist);
     if (lyricsOvhLyrics) {
-      console.log(`✓ Got ${lyricsOvhLyrics.length} lines from Lyrics.ovh`);
+      console.log(`Got ${lyricsOvhLyrics.length} lines`);
       return lyricsOvhLyrics;
     }
 
-    console.warn('⚠ No lyrics returned from available free providers.');
+    console.warn('No lyrics returned from available providers');
     return null;
   } catch (err) {
     console.error('Error fetching lyrics:', err);
