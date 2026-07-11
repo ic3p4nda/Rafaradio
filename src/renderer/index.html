@@ -204,6 +204,17 @@
 
         <div class="settings-group">
           <div class="toggle-row">
+            <label for="beatSyncToggleCheck">Beat-Sync Animation Speed</label>
+            <input type="checkbox" id="beatSyncToggleCheck" />
+          </div>
+          <div id="bpmIndicatorRow" class="bpm-indicator-row" style="display: none; font-size: 11px; margin-top: 6px; color: var(--gold); font-weight: 600; font-family: monospace; align-items: center; justify-content: space-between; border-top: 1px solid rgba(255, 255, 255, 0.05); padding-top: 6px;">
+            <span>Detected BPM</span>
+            <span id="bpmVal">--- BPM</span>
+          </div>
+        </div>
+
+        <div class="settings-group">
+          <div class="toggle-row">
             <label for="discToggleCheck">Show Vinyl Record Disc</label>
             <input type="checkbox" id="discToggleCheck" checked />
           </div>

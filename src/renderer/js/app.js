@@ -80,6 +80,8 @@ import {
   registerKeyboardShortcuts 
 } from './controls.js';
 
+import BpmDetector from './bpm-detector.js';
+
 // DOM elements
 let playBtn, prevBtn, nextBtn, shuffleBtn, repeatBtn;
 let seekBar, trackTime, volumeBar;
@@ -95,10 +97,11 @@ let importLikedSongsBtn, importLikedForm, importLikedAuthBtn, importLikedCancel,
 let settingsToggle, settingsPanel, fontSelect, glowColorSelect, textSizeSlider, textSizeVal, bounceSlider, bounceVal;
 let spotlightToggleCheck, discToggleCheck, syncColorsCheck, waveColorSelect, visualizerStyleSelect;
 let particleColor1Select, particleColor2Select, driftSpeedSlider, driftSpeedVal, playbackSpeedSelect, sleepTimerSelect, sleepTimerRemaining, crossfadeToggleCheck;
-let waveformColorGroup, lyricsOverlay, lyricsStatus, lyricsRefresh;
+let waveformColorGroup, lyricsOverlay, lyricsStatus, lyricsRefresh, beatSyncToggleCheck;
 
 let isVisualizerActive = false;
 let visualizerAnimationId = null;
+const bpmDetector = new BpmDetector();
 
 const colorMap = {
   gold: '#fac900',
@@ -223,6 +226,7 @@ export function initApp() {
   sleepTimerRemaining = document.getElementById('sleepTimerRemaining');
   crossfadeToggleCheck = document.getElementById('crossfadeToggleCheck');
   waveformColorGroup = document.getElementById('waveformColorGroup');
+  beatSyncToggleCheck = document.getElementById('beatSyncToggleCheck');
   
   lyricsOverlay = document.getElementById('lyricsOverlay');
   lyricsStatus = document.getElementById('lyricsStatus');
@@ -378,6 +382,14 @@ function formatTime(seconds) {
 // ---------------- TRANSPORT FLOW ----------------
 async function loadTrack(index, autoplay = true) {
   if (index < 0 || index >= playlist.length) return;
+
+  if (bpmDetector) {
+    bpmDetector.reset();
+    const bpmValEl = document.getElementById('bpmVal');
+    if (bpmValEl) {
+      bpmValEl.textContent = '--- BPM';
+    }
+  }
 
   setPlaybackRetryCount(0);
   const trackLoadId = incrementTrackLoadId();
@@ -1393,6 +1405,7 @@ function initSettingsUI() {
     textSize: 1.0,
     bounceIntensity: 1.0,
     showSpotlight: true,
+    beatSync: false,
     showDisc: true,
     syncColors: true,
     waveColor: 'cyan',
@@ -1416,6 +1429,14 @@ function initSettingsUI() {
   bounceSlider.value = saved.bounceIntensity;
   bounceVal.textContent = `${parseFloat(saved.bounceIntensity).toFixed(1)}x`;
   spotlightToggleCheck.checked = !!saved.showSpotlight;
+
+  if (beatSyncToggleCheck) {
+    beatSyncToggleCheck.checked = !!saved.beatSync;
+    const bpmIndicatorRow = document.getElementById('bpmIndicatorRow');
+    if (bpmIndicatorRow) {
+      bpmIndicatorRow.style.display = saved.beatSync ? 'flex' : 'none';
+    }
+  }
 
   if (discToggleCheck) discToggleCheck.checked = saved.showDisc !== false;
   if (syncColorsCheck) syncColorsCheck.checked = saved.syncColors !== false;
@@ -1448,7 +1469,7 @@ function initSettingsUI() {
 function bindSettingsUIListeners() {
   const settingsInputs = [
     fontSelect, glowColorSelect, textSizeSlider, bounceSlider, spotlightToggleCheck,
-    discToggleCheck, syncColorsCheck, waveColorSelect, visualizerStyleSelect,
+    beatSyncToggleCheck, discToggleCheck, syncColorsCheck, waveColorSelect, visualizerStyleSelect,
     particleColor1Select, particleColor2Select, driftSpeedSlider, playbackSpeedSelect,
     crossfadeToggleCheck
   ];
@@ -1522,6 +1543,7 @@ function onSettingsChanged() {
     textSize: parseFloat(textSizeSlider.value),
     bounceIntensity: parseFloat(bounceSlider.value),
     showSpotlight: spotlightToggleCheck.checked,
+    beatSync: beatSyncToggleCheck ? beatSyncToggleCheck.checked : false,
     showDisc: discToggleCheck ? discToggleCheck.checked : true,
     syncColors: syncColorsCheck ? syncColorsCheck.checked : true,
     waveColor: waveColorSelect ? waveColorSelect.value : 'cyan',
@@ -1537,6 +1559,18 @@ function onSettingsChanged() {
   bounceVal.textContent = `${settings.bounceIntensity.toFixed(1)}x`;
   if (driftSpeedVal && driftSpeedSlider) {
     driftSpeedVal.textContent = `${parseFloat(driftSpeedSlider.value).toFixed(1)}x`;
+  }
+
+  if (beatSyncToggleCheck) {
+    const bpmIndicatorRow = document.getElementById('bpmIndicatorRow');
+    if (bpmIndicatorRow) {
+      bpmIndicatorRow.style.display = settings.beatSync ? 'flex' : 'none';
+    }
+    if (!settings.beatSync && bpmDetector) {
+      bpmDetector.reset();
+      const bpmValEl = document.getElementById('bpmVal');
+      if (bpmValEl) bpmValEl.textContent = '--- BPM';
+    }
   }
 
   localStorage.setItem('lyricsTextSettings', JSON.stringify(settings));
@@ -1795,6 +1829,23 @@ function animateFrame() {
     PARTICLE_COLORS_MAP[primaryGlow], 
     PARTICLE_COLORS_MAP[secondaryGlow]
   );
+
+  // Update real-time BPM detection if beat-sync is checked and audio is playing
+  if (beatSyncToggleCheck && beatSyncToggleCheck.checked && !audio.paused && bpmDetector) {
+    bpmDetector.update(bassAvg);
+    const detectedBpm = bpmDetector.getBpm();
+    
+    // Update the visualizer with the new BPM so it can adjust animation speed
+    if (lyricsVisualizer) {
+      lyricsVisualizer.updateSettings({ detectedBpm });
+    }
+    
+    // Update UI indicator in real-time
+    const bpmValEl = document.getElementById('bpmVal');
+    if (bpmValEl) {
+      bpmValEl.textContent = `${Math.round(detectedBpm)} BPM`;
+    }
+  }
 
   if (lyricsVisualizer) {
     lyricsVisualizer.updateBass(bassAvg);

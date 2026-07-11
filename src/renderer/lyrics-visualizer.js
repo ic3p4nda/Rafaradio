@@ -507,14 +507,40 @@ class LyricsVisualizer {
   animate() {
     this.animationFrameId = requestAnimationFrame(() => this.animate());
 
-    const t = Date.now() * 0.001;
-    const bass = this.bassAvg || 0;
-    const bounceMult = this.textSettings.bounceIntensity !== undefined ? this.textSettings.bounceIntensity : 1.0;
+    const now = performance.now() * 0.001;
+    if (!this.lastFrameTime) {
+      this.lastFrameTime = now;
+    }
+    const deltaTime = now - this.lastFrameTime;
+    this.lastFrameTime = now;
+
+    // Default speed multiplier is 1.0.
+    let speedMultiplier = 1.0;
+    if (this.textSettings.beatSync && this.textSettings.detectedBpm) {
+      // 120 BPM is our reference. Proportional speed adjust.
+      speedMultiplier = this.textSettings.detectedBpm / 120.0;
+      // Clamp speedMultiplier to 0.5x - 2.5x to preserve elegant flow
+      speedMultiplier = Math.max(0.5, Math.min(2.5, speedMultiplier));
+    }
+
+    if (this.animationTime === undefined) {
+      this.animationTime = Date.now() * 0.001;
+    }
 
     // Get current audio element info for timing and pause state
     const audioEl = document.getElementById('audio');
     const currentTime = audioEl ? audioEl.currentTime : 0;
     const isPaused = audioEl ? audioEl.paused : true;
+
+    if (!isPaused) {
+      this.animationTime += deltaTime * speedMultiplier;
+    } else {
+      this.animationTime += deltaTime * 0.5; // slow idle breathing when paused
+    }
+
+    const t = this.animationTime;
+    const bass = this.bassAvg || 0;
+    const bounceMult = this.textSettings.bounceIntensity !== undefined ? this.textSettings.bounceIntensity : 1.0;
 
     // Smooth color change when paused vs playing (gray out when paused)
     const targetColor = isPaused ? new THREE.Color(0x777777) : new THREE.Color(0xffffff);
