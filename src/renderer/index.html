@@ -37,7 +37,7 @@
         <svg class="icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>
         Library
       </button>
-      <button id="settingsToggle" class="nav-pill-btn" title="Lyrics Settings">
+      <button id="settingsToggle" class="nav-pill-btn" title="Settings">
         <svg class="icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
         Settings
       </button>
@@ -155,170 +155,204 @@
     </aside>
 
     <aside id="settingsPanel" class="settings-panel">
-      <div class="playlist-header">Lyrics Customization</div>
+      <div class="playlist-header">Player Settings</div>
+
+      <div class="settings-tabs" id="settingsTabs">
+        <button type="button" class="settings-tab-btn active" data-tab="visuals">Visuals</button>
+        <button type="button" class="settings-tab-btn" data-tab="lyrics">Lyrics</button>
+        <button type="button" class="settings-tab-btn" data-tab="waveform">Waveform</button>
+        <button type="button" class="settings-tab-btn" data-tab="playback">Playback</button>
+      </div>
+
       <div class="settings-content">
-        <div class="settings-group">
-          <label for="fontSelect">Font Style</label>
-          <select id="fontSelect" class="settings-control">
-            <option value="'Space Grotesk', 'Inter', sans-serif">Space Grotesk (Modern)</option>
-            <option value="'Inter', sans-serif">Inter (Clean)</option>
-            <option value="'Cinzel', serif">Cinzel (Elegant)</option>
-            <option value="'VT323', monospace">VT323 (Retro)</option>
-            <option value="'Playfair Display', serif">Playfair (Classic)</option>
-          </select>
-        </div>
 
-        <div class="settings-group">
-          <label for="glowColorSelect">Active Text Glow</label>
-          <select id="glowColorSelect" class="settings-control">
-            <option value="gold">Cosmic Gold (Default)</option>
-            <option value="cyan">Neon Cyan</option>
-            <option value="magenta">Hyper Pink</option>
-            <option value="green">Acid Green</option>
-            <option value="white">Ghostly White</option>
-          </select>
-        </div>
+        <!-- ---------------- VISUALS TAB ---------------- -->
+        <div class="settings-tab-panel active" data-tab-panel="visuals">
+          <div class="settings-divider" style="margin-top: 0;">Particle Stage</div>
 
-        <div class="settings-group">
-          <label for="textSizeSlider">Text Size Scale</label>
-          <div class="slider-row">
-            <input type="range" id="textSizeSlider" class="settings-slider" min="0.5" max="1.8" step="0.05" value="1.0" />
-            <span id="textSizeVal" class="settings-val">1.0x</span>
+          <div class="settings-group">
+            <label for="particleLayoutSelect">Particle Layout</label>
+            <select id="particleLayoutSelect" class="settings-control">
+              <option value="field" selected>Cosmic Field</option>
+              <option value="albumArt">Album Cover Cloud</option>
+              <option value="vinyl">Vinyl Record</option>
+              <option value="starburst">Pulse Rings</option>
+            </select>
+          </div>
+
+          <div class="settings-group">
+            <label for="particleColor1Select">Primary Particle Color</label>
+            <select id="particleColor1Select" class="settings-control">
+              <option value="gold" selected>Cosmic Gold</option>
+              <option value="cyan">Neon Cyan</option>
+              <option value="magenta">Hyper Pink</option>
+              <option value="green">Acid Green</option>
+              <option value="white">Ghostly White</option>
+              <option value="red">Deep Space Red</option>
+              <option value="blue">Electric Blue</option>
+              <option value="purple">Celestial Purple</option>
+              <option value="orange">Sunset Orange</option>
+            </select>
+          </div>
+
+          <div class="settings-group">
+            <label for="particleColor2Select">Secondary Particle Color</label>
+            <select id="particleColor2Select" class="settings-control">
+              <option value="blue" selected>Electric Blue</option>
+              <option value="magenta">Hyper Pink</option>
+              <option value="cyan">Neon Cyan</option>
+              <option value="gold">Cosmic Gold</option>
+              <option value="green">Acid Green</option>
+              <option value="red">Deep Space Red</option>
+              <option value="purple">Celestial Purple</option>
+              <option value="orange">Sunset Orange</option>
+            </select>
+          </div>
+
+          <div class="settings-group">
+            <label for="driftSpeedSlider">Ambient Drift Speed</label>
+            <div class="slider-row">
+              <input type="range" id="driftSpeedSlider" class="settings-slider" min="0" max="3.0" step="0.1" value="1.0" />
+              <span id="driftSpeedVal" class="settings-val">1.0x</span>
+            </div>
+          </div>
+
+          <div class="settings-hint">
+            Album Cover Cloud and Vinyl Record rebuild themselves from the current track's cover art and jump on the beat. If a track has no usable cover, they'll fall back gracefully.
           </div>
         </div>
 
-        <div class="settings-group">
-          <label for="bounceSlider">Bass Bounce Intensity</label>
-          <div class="slider-row">
-            <input type="range" id="bounceSlider" class="settings-slider" min="0" max="2.0" step="0.1" value="1.0" />
-            <span id="bounceVal" class="settings-val">1.0x</span>
+        <!-- ---------------- LYRICS TAB ---------------- -->
+        <div class="settings-tab-panel" data-tab-panel="lyrics">
+          <div class="settings-group">
+            <label for="fontSelect">Font Style</label>
+            <select id="fontSelect" class="settings-control">
+              <option value="'Space Grotesk', 'Inter', sans-serif">Space Grotesk (Modern)</option>
+              <option value="'Inter', sans-serif">Inter (Clean)</option>
+              <option value="'Cinzel', serif">Cinzel (Elegant)</option>
+              <option value="'VT323', monospace">VT323 (Retro)</option>
+              <option value="'Playfair Display', serif">Playfair (Classic)</option>
+            </select>
+          </div>
+
+          <div class="settings-group">
+            <label for="glowColorSelect">Active Text Glow</label>
+            <select id="glowColorSelect" class="settings-control">
+              <option value="gold">Cosmic Gold (Default)</option>
+              <option value="cyan">Neon Cyan</option>
+              <option value="magenta">Hyper Pink</option>
+              <option value="green">Acid Green</option>
+              <option value="white">Ghostly White</option>
+            </select>
+          </div>
+
+          <div class="settings-group">
+            <label for="textSizeSlider">Text Size Scale</label>
+            <div class="slider-row">
+              <input type="range" id="textSizeSlider" class="settings-slider" min="0.5" max="1.8" step="0.05" value="1.0" />
+              <span id="textSizeVal" class="settings-val">1.0x</span>
+            </div>
+          </div>
+
+          <div class="settings-group">
+            <label for="bounceSlider">Bass Bounce Intensity</label>
+            <div class="slider-row">
+              <input type="range" id="bounceSlider" class="settings-slider" min="0" max="2.0" step="0.1" value="1.0" />
+              <span id="bounceVal" class="settings-val">1.0x</span>
+            </div>
+          </div>
+
+          <div class="settings-group">
+            <div class="toggle-row">
+              <label for="spotlightToggleCheck">Spotlight Glow Background</label>
+              <input type="checkbox" id="spotlightToggleCheck" checked />
+            </div>
+          </div>
+
+          <div class="settings-group">
+            <div class="toggle-row">
+              <label for="beatSyncToggleCheck">Beat-Sync Animation Speed</label>
+              <input type="checkbox" id="beatSyncToggleCheck" />
+            </div>
+            <div id="bpmIndicatorRow" class="bpm-indicator-row" style="display: none; font-size: 11px; margin-top: 6px; color: var(--gold); font-weight: 600; font-family: monospace; align-items: center; justify-content: space-between; border-top: 1px solid rgba(255, 255, 255, 0.05); padding-top: 6px;">
+              <span>Detected BPM</span>
+              <span id="bpmVal">--- BPM</span>
+            </div>
           </div>
         </div>
 
-        <div class="settings-group">
-          <div class="toggle-row">
-            <label for="spotlightToggleCheck">Spotlight Glow Background</label>
-            <input type="checkbox" id="spotlightToggleCheck" checked />
+        <!-- ---------------- WAVEFORM TAB ---------------- -->
+        <div class="settings-tab-panel" data-tab-panel="waveform">
+          <div class="settings-group">
+            <div class="toggle-row">
+              <label for="syncColorsCheck">Sync Waveform & Lyrics Colors</label>
+              <input type="checkbox" id="syncColorsCheck" checked />
+            </div>
+          </div>
+
+          <div class="settings-group" id="waveformColorGroup" style="display: none;">
+            <label for="waveColorSelect">Waveform Glow Color</label>
+            <select id="waveColorSelect" class="settings-control">
+              <option value="gold">Cosmic Gold</option>
+              <option value="cyan" selected>Neon Cyan</option>
+              <option value="magenta">Hyper Pink</option>
+              <option value="green">Acid Green</option>
+              <option value="white">Ghostly White</option>
+            </select>
+          </div>
+
+          <div class="settings-group">
+            <label for="visualizerStyleSelect">Waveform Style</label>
+            <select id="visualizerStyleSelect" class="settings-control">
+              <option value="mirrored">Mirrored (Bass Center)</option>
+              <option value="standard">Standard (Left to Right)</option>
+            </select>
           </div>
         </div>
 
-        <div class="settings-group">
-          <div class="toggle-row">
-            <label for="beatSyncToggleCheck">Beat-Sync Animation Speed</label>
-            <input type="checkbox" id="beatSyncToggleCheck" />
+        <!-- ---------------- PLAYBACK TAB ---------------- -->
+        <div class="settings-tab-panel" data-tab-panel="playback">
+          <div class="settings-group">
+            <div class="toggle-row">
+              <label for="discToggleCheck">Show Spinning Disc (Deck)</label>
+              <input type="checkbox" id="discToggleCheck" checked />
+            </div>
           </div>
-          <div id="bpmIndicatorRow" class="bpm-indicator-row" style="display: none; font-size: 11px; margin-top: 6px; color: var(--gold); font-weight: 600; font-family: monospace; align-items: center; justify-content: space-between; border-top: 1px solid rgba(255, 255, 255, 0.05); padding-top: 6px;">
-            <span>Detected BPM</span>
-            <span id="bpmVal">--- BPM</span>
+
+          <div class="settings-group">
+            <label for="playbackSpeedSelect">Playback Speed</label>
+            <select id="playbackSpeedSelect" class="settings-control">
+              <option value="0.5">0.5x</option>
+              <option value="0.75">0.75x</option>
+              <option value="1" selected>1.0x (Normal)</option>
+              <option value="1.25">1.25x</option>
+              <option value="1.5">1.5x</option>
+              <option value="2">2.0x</option>
+            </select>
           </div>
-        </div>
 
-        <div class="settings-group">
-          <div class="toggle-row">
-            <label for="discToggleCheck">Show Vinyl Record Disc</label>
-            <input type="checkbox" id="discToggleCheck" checked />
+          <div class="settings-group">
+            <label for="sleepTimerSelect">Sleep Timer</label>
+            <select id="sleepTimerSelect" class="settings-control">
+              <option value="0" selected>Disabled</option>
+              <option value="5">5 minutes</option>
+              <option value="10">10 minutes</option>
+              <option value="15">15 minutes</option>
+              <option value="30">30 minutes</option>
+              <option value="45">45 minutes</option>
+              <option value="60">60 minutes</option>
+            </select>
+            <div id="sleepTimerRemaining" class="settings-val" style="display: none; text-align: left; font-size: 11px; margin-top: 4px; color: var(--gold); font-weight: 600; font-family: monospace;"></div>
           </div>
-        </div>
 
-        <div class="settings-group">
-          <div class="toggle-row">
-            <label for="syncColorsCheck">Sync Waveform & Lyrics Colors</label>
-            <input type="checkbox" id="syncColorsCheck" checked />
-          </div>
-        </div>
-
-        <div class="settings-group" id="waveformColorGroup" style="display: none;">
-          <label for="waveColorSelect">Waveform Glow Color</label>
-          <select id="waveColorSelect" class="settings-control">
-            <option value="gold">Cosmic Gold</option>
-            <option value="cyan" selected>Neon Cyan</option>
-            <option value="magenta">Hyper Pink</option>
-            <option value="green">Acid Green</option>
-            <option value="white">Ghostly White</option>
-          </select>
-        </div>
-
-        <div class="settings-group">
-          <label for="visualizerStyleSelect">Waveform Style</label>
-          <select id="visualizerStyleSelect" class="settings-control">
-            <option value="mirrored">Mirrored (Bass Center)</option>
-            <option value="standard">Standard (Left to Right)</option>
-          </select>
-        </div>
-
-        <div class="settings-divider">Visualizer & Particle Fields</div>
-
-        <div class="settings-group">
-          <label for="particleColor1Select">Primary Particle Color</label>
-          <select id="particleColor1Select" class="settings-control">
-            <option value="gold" selected>Cosmic Gold</option>
-            <option value="cyan">Neon Cyan</option>
-            <option value="magenta">Hyper Pink</option>
-            <option value="green">Acid Green</option>
-            <option value="white">Ghostly White</option>
-            <option value="red">Deep Space Red</option>
-            <option value="blue">Electric Blue</option>
-            <option value="purple">Celestial Purple</option>
-            <option value="orange">Sunset Orange</option>
-          </select>
-        </div>
-
-        <div class="settings-group">
-          <label for="particleColor2Select">Secondary Particle Color</label>
-          <select id="particleColor2Select" class="settings-control">
-            <option value="blue" selected>Electric Blue</option>
-            <option value="magenta">Hyper Pink</option>
-            <option value="cyan">Neon Cyan</option>
-            <option value="gold">Cosmic Gold</option>
-            <option value="green">Acid Green</option>
-            <option value="red">Deep Space Red</option>
-            <option value="purple">Celestial Purple</option>
-            <option value="orange">Sunset Orange</option>
-          </select>
-        </div>
-
-        <div class="settings-group">
-          <label for="driftSpeedSlider">Ambient Drift Speed</label>
-          <div class="slider-row">
-            <input type="range" id="driftSpeedSlider" class="settings-slider" min="0" max="3.0" step="0.1" value="1.0" />
-            <span id="driftSpeedVal" class="settings-val">1.0x</span>
+          <div class="settings-group">
+            <div class="toggle-row">
+              <label for="crossfadeToggleCheck">Smooth Volume Fade (Crossfade)</label>
+              <input type="checkbox" id="crossfadeToggleCheck" checked />
+            </div>
           </div>
         </div>
 
-        <div class="settings-divider">Playback Controls</div>
-
-        <div class="settings-group">
-          <label for="playbackSpeedSelect">Playback Speed</label>
-          <select id="playbackSpeedSelect" class="settings-control">
-            <option value="0.5">0.5x</option>
-            <option value="0.75">0.75x</option>
-            <option value="1" selected>1.0x (Normal)</option>
-            <option value="1.25">1.25x</option>
-            <option value="1.5">1.5x</option>
-            <option value="2">2.0x</option>
-          </select>
-        </div>
-
-        <div class="settings-group">
-          <label for="sleepTimerSelect">Sleep Timer</label>
-          <select id="sleepTimerSelect" class="settings-control">
-            <option value="0" selected>Disabled</option>
-            <option value="5">5 minutes</option>
-            <option value="10">10 minutes</option>
-            <option value="15">15 minutes</option>
-            <option value="30">30 minutes</option>
-            <option value="45">45 minutes</option>
-            <option value="60">60 minutes</option>
-          </select>
-          <div id="sleepTimerRemaining" class="settings-val" style="display: none; text-align: left; font-size: 11px; margin-top: 4px; color: var(--gold); font-weight: 600; font-family: monospace;"></div>
-        </div>
-
-        <div class="settings-group">
-          <div class="toggle-row">
-            <label for="crossfadeToggleCheck">Smooth Volume Fade (Crossfade)</label>
-            <input type="checkbox" id="crossfadeToggleCheck" checked />
-          </div>
-        </div>
       </div>
     </aside>
 

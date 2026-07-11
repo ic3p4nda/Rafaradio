@@ -52,7 +52,10 @@ import {
   updateParticlesAnimation, 
   cameraControls,
   goldColor,
-  blueColor
+  blueColor,
+  scene,
+  camera,
+  renderer3D
 } from './particles.js';
 
 import { 

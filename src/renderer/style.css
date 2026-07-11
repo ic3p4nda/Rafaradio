@@ -1908,4 +1908,268 @@ body.mini-player-active #miniPlayerToggleBtn:active {
   opacity: 1;
 }
 
+/* ============================================================
+   RESPONSIVE / MINERADIO-STYLE UI ENHANCEMENTS
+   Everything below is additive — it layers on top of the rules
+   above via the cascade + media queries, nothing was deleted.
+   ============================================================ */
 
+/* Snappier, consistent interactive feedback everywhere */
+button,
+.settings-control,
+input[type="range"] {
+  transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1),
+              background 0.15s ease,
+              border-color 0.15s ease,
+              box-shadow 0.15s ease,
+              color 0.15s ease;
+}
+
+.ctrl-btn:active,
+.ctrl-btn-secondary:active,
+.nav-pill-btn:active,
+.playlist-create-btn:active,
+.like-btn:active {
+  transform: scale(0.9);
+}
+
+.ctrl-btn-main:active {
+  transform: scale(0.94);
+}
+
+/* Row press feedback across lists (Mineradio-style tactile lists) */
+.playlist-track-row:active,
+.cloud-result:active,
+.modal-playlist-item:active,
+.playlist-item:active {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* Thin neon scrollbars instead of default OS scrollbars */
+.playlists-list-view,
+.playlist-detail-view,
+#cloudResults,
+.settings-content {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(250, 201, 0, 0.35) transparent;
+}
+
+.playlists-list-view::-webkit-scrollbar,
+.playlist-detail-view::-webkit-scrollbar,
+#cloudResults::-webkit-scrollbar,
+.settings-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.playlists-list-view::-webkit-scrollbar-track,
+.playlist-detail-view::-webkit-scrollbar-track,
+#cloudResults::-webkit-scrollbar-track,
+.settings-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.playlists-list-view::-webkit-scrollbar-thumb,
+.playlist-detail-view::-webkit-scrollbar-thumb,
+#cloudResults::-webkit-scrollbar-thumb,
+.settings-content::-webkit-scrollbar-thumb {
+  background: rgba(250, 201, 0, 0.3);
+  border-radius: 999px;
+}
+
+.playlists-list-view::-webkit-scrollbar-thumb:hover,
+.playlist-detail-view::-webkit-scrollbar-thumb:hover,
+#cloudResults::-webkit-scrollbar-thumb:hover,
+.settings-content::-webkit-scrollbar-thumb:hover {
+  background: rgba(250, 201, 0, 0.55);
+}
+
+/* Focus states for keyboard/accessibility use, styled to match the glow theme */
+button:focus-visible,
+.settings-control:focus-visible,
+input[type="range"]:focus-visible,
+.playlist-item:focus-visible,
+.playlist-track-row:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
+/* ---------- Large desktop: give the deck a comfortable max width ---------- */
+@media (min-width: 1400px) {
+  .deck {
+    max-width: 900px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+}
+
+/* ---------- Medium windows: tighten paddings, shrink nav pill & side panels ---------- */
+@media (max-width: 900px) {
+  .nav-pill {
+    top: 44px;
+    padding: 2px;
+  }
+
+  .nav-pill-btn {
+    padding: 6px 10px;
+    font-size: 10px;
+    gap: 4px;
+  }
+
+  .playlist-panel,
+  .cloud-panel,
+  .settings-panel {
+    width: 280px;
+  }
+
+  .deck {
+    gap: 16px;
+    padding: 16px 20px;
+    margin: 0 12px 12px;
+  }
+}
+
+/* ---------- Small windows: stack the deck like Mineradio's compact layout ---------- */
+@media (max-width: 640px) {
+  .nav-pill-btn {
+    font-size: 9px;
+    padding: 6px 8px;
+    gap: 3px;
+  }
+
+  .deck {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    padding: 16px;
+    border-radius: 16px;
+    margin: 0 10px 10px;
+  }
+
+  .disc-wrap,
+  .disc {
+    width: 56px;
+    height: 56px;
+  }
+
+  .disc-wrap {
+    align-self: center;
+  }
+
+  .deck-main {
+    width: 100%;
+  }
+
+  .track-info {
+    align-items: flex-start;
+  }
+
+  .controls {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 10px;
+  }
+
+  .volume-wrap {
+    order: 10;
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .add-btn {
+    margin-left: 0;
+    width: 100%;
+    text-align: center;
+  }
+
+  /* Side panels behave like full-width bottom sheets rather than thin sidebars */
+  .playlist-panel,
+  .cloud-panel,
+  .settings-panel {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .lyrics-overlay {
+    padding: 70px 14px 120px;
+  }
+
+  .lyrics-overlay-line.active {
+    font-size: clamp(18px, 6vw, 30px);
+  }
+
+  .modal-content {
+    max-width: 92vw;
+  }
+}
+
+/* ---------- Very small / phone-portrait width ---------- */
+@media (max-width: 420px) {
+  .nav-pill {
+    gap: 0;
+  }
+
+  .nav-pill-btn {
+    padding: 5px 6px;
+  }
+
+  .ctrl-btn-main {
+    width: 40px;
+    height: 40px;
+  }
+
+  .track-info {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  #trackTime {
+    margin-left: 0;
+  }
+
+  body.mini-player-active .deck {
+    padding: 10px 12px;
+    gap: 8px;
+  }
+
+  body.mini-player-active .disc-wrap {
+    width: 46px;
+    height: 46px;
+  }
+
+  body.mini-player-active .screen-wrap {
+    height: 58px;
+  }
+}
+
+/* ---------- Respect short windows (height) so the deck never gets clipped ---------- */
+@media (max-height: 560px) {
+  .app {
+    padding-top: 28px;
+  }
+
+  .nav-pill {
+    top: 36px;
+  }
+
+  .deck {
+    padding: 12px 18px;
+    margin: 0 10px 10px;
+  }
+
+  .disc-wrap,
+  .disc {
+    width: 56px;
+    height: 56px;
+  }
+}
+
+/* Respect reduced-motion preferences for users who need it */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

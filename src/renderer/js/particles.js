@@ -1,4 +1,19 @@
 // Particles module (Three.js field visualizer)
+//
+// Supports multiple "particle layouts":
+//   - field      : the original ambient sphere-shell starfield
+//   - albumArt   : the current track's cover art rebuilt out of particles,
+//                  each one jumping toward the camera on the beat
+//   - vinyl      : a spinning particle record with the cover art as the
+//                  center label and glowing groove rings around it
+//   - starburst  : concentric pulse rings that breathe outward on the beat
+//
+// All layouts share one "jump" mechanic: every particle has a base resting
+// position, an outward-facing normal, and a random jump amplitude. Each
+// frame we push it out along its normal by (bass energy + beat pulse), then
+// spring it back — that's what makes things feel like they're bouncing to
+// the music instead of just pulsing uniformly.
+
 import * as THREE from 'three';
 import { OrbitControls } from '../vendor/OrbitControls.js';
 
@@ -6,17 +21,35 @@ let renderer3D;
 let scene;
 let camera;
 let cameraControls;
-let particleGeometry;
-let particleMaterial;
-let particleField;
+
+// Two independent particle "layers":
+//  - structuralField: the layout's scaffolding (starfield / grooves / rings)
+//  - albumField: the image-sampled particles (only used by albumArt & vinyl)
+let structuralField = null;
+let structuralBase = null;
+let structuralNormals = null;
+let structuralJumpAmp = null;
+
+let albumField = null;
+let albumBase = null;
+let albumNormals = null;
+let albumJumpAmp = null;
+
+let currentLayout = 'field';
+let spinAngle = 0;
+let smoothedBass = 0;
+let beatPulse = 0;
 
 export const goldColor = new THREE.Color('#fac900');
 export const blueColor = new THREE.Color('#008aff');
 export const mixedColor = new THREE.Color();
 
-const PARTICLE_COUNT = 1600;
+const FIELD_COUNT = 1600;
+const AMBIENT_SHELL_COUNT = 350; // sparse background shell used behind albumArt/vinyl
 
-function makeParticleSprite() {
+let sharedSpriteTexture = null;
+function getSpriteTexture() {
+  if (sharedSpriteTexture) return sharedSpriteTexture;
   const size = 64;
   const spriteCanvas = document.createElement('canvas');
   spriteCanvas.width = spriteCanvas.height = size;
@@ -27,8 +60,312 @@ function makeParticleSprite() {
   grad.addColorStop(1, 'rgba(255,255,255,0)');
   sctx.fillStyle = grad;
   sctx.fillRect(0, 0, size, size);
-  return new THREE.CanvasTexture(spriteCanvas);
+  sharedSpriteTexture = new THREE.CanvasTexture(spriteCanvas);
+  return sharedSpriteTexture;
 }
+
+// ---------------- Layout geometry generators ----------------
+// Each generator returns { positions, normals, jumpAmp } as flat Float32Arrays
+// (positions/normals are xyz-interleaved, jumpAmp is one value per particle).
+
+function genFieldPositions(count) {
+  const positions = new Float32Array(count * 3);
+  const normals = new Float32Array(count * 3);
+  const jumpAmp = new Float32Array(count);
+
+  for (let i = 0; i < count; i++) {
+    const radius = 250 + Math.random() * 550;
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.acos(Math.random() * 2 - 1);
+    const x = radius * Math.sin(phi) * Math.cos(theta);
+    const y = radius * Math.sin(phi) * Math.sin(theta);
+    const z = radius * Math.cos(phi);
+    positions[i * 3] = x;
+    positions[i * 3 + 1] = y;
+    positions[i * 3 + 2] = z;
+
+    const len = Math.sqrt(x * x + y * y + z * z) || 1;
+    normals[i * 3] = x / len;
+    normals[i * 3 + 1] = y / len;
+    normals[i * 3 + 2] = z / len;
+
+    jumpAmp[i] = 4 + Math.random() * 16;
+  }
+
+  return { positions, normals, jumpAmp };
+}
+
+function genVinylGrooves(rings, minRadius, maxRadius) {
+  const positions = [];
+  const normals = [];
+  const jumpAmp = [];
+
+  for (let r = 0; r < rings; r++) {
+    const radius = minRadius + (maxRadius - minRadius) * (r / Math.max(1, rings - 1));
+    const circumference = 2 * Math.PI * radius;
+    const count = Math.max(24, Math.floor(circumference / 6));
+    const offset = (r % 2 === 0) ? 0 : Math.PI / count;
+
+    for (let i = 0; i < count; i++) {
+      const theta = (i / count) * Math.PI * 2 + offset;
+      const x = radius * Math.cos(theta);
+      const y = radius * Math.sin(theta);
+      positions.push(x, y, 0);
+      normals.push(0, 0, 1);
+      jumpAmp.push(1.5 + Math.random() * 5);
+    }
+  }
+
+  return {
+    positions: new Float32Array(positions),
+    normals: new Float32Array(normals),
+    jumpAmp: new Float32Array(jumpAmp)
+  };
+}
+
+function genStarburstRings(ringCount, pointsPerRing, minRadius, maxRadius) {
+  const positions = [];
+  const normals = [];
+  const jumpAmp = [];
+
+  for (let r = 0; r < ringCount; r++) {
+    const radius = minRadius + (maxRadius - minRadius) * (r / Math.max(1, ringCount - 1));
+    for (let i = 0; i < pointsPerRing; i++) {
+      const theta = (i / pointsPerRing) * Math.PI * 2;
+      const x = radius * Math.cos(theta);
+      const y = radius * Math.sin(theta);
+      const z = (Math.random() - 0.5) * 24;
+      positions.push(x, y, z);
+
+      const len = Math.sqrt(x * x + y * y) || 1;
+      normals.push(x / len, y / len, 0); // radial outward -> rings "breathe"
+      jumpAmp.push(6 + Math.random() * 26);
+    }
+  }
+
+  return {
+    positions: new Float32Array(positions),
+    normals: new Float32Array(normals),
+    jumpAmp: new Float32Array(jumpAmp)
+  };
+}
+
+// ---------------- Album art sampling ----------------
+
+function loadImage(url) {
+  return new Promise((resolve, reject) => {
+    if (!url) {
+      reject(new Error('No image URL provided'));
+      return;
+    }
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('Image failed to load'));
+    img.src = url;
+  });
+}
+
+// Samples an <img> down to a small grid and returns one {x,y,r,g,b} entry per
+// pixel worth keeping. Center-crops to a square first so non-square art
+// (e.g. wide YouTube thumbnails) doesn't look squished.
+function sampleImageToPoints(img, gridSize, planeSize, { circleMask = false } = {}) {
+  const canvas = document.createElement('canvas');
+  canvas.width = gridSize;
+  canvas.height = gridSize;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+  const srcW = img.naturalWidth || img.width;
+  const srcH = img.naturalHeight || img.height;
+  const srcSize = Math.min(srcW, srcH);
+  const sx = (srcW - srcSize) / 2;
+  const sy = (srcH - srcSize) / 2;
+  ctx.drawImage(img, sx, sy, srcSize, srcSize, 0, 0, gridSize, gridSize);
+
+  let data;
+  try {
+    data = ctx.getImageData(0, 0, gridSize, gridSize).data;
+  } catch (err) {
+    // Canvas got tainted — almost always a CORS-restricted image source.
+    throw new Error('Cannot read pixels from this image (CORS restricted)');
+  }
+
+  const points = [];
+  const half = gridSize / 2;
+  const step = planeSize / gridSize;
+
+  for (let y = 0; y < gridSize; y++) {
+    for (let x = 0; x < gridSize; x++) {
+      const idx = (y * gridSize + x) * 4;
+      const r = data[idx];
+      const g = data[idx + 1];
+      const b = data[idx + 2];
+      const a = data[idx + 3];
+      if (a < 40) continue;
+
+      const brightness = (r + g + b) / 3;
+      if (brightness < 6) continue; // skip near-black filler
+
+      if (circleMask) {
+        const dx = x - half;
+        const dy = y - half;
+        if (Math.sqrt(dx * dx + dy * dy) > half) continue;
+      }
+
+      const px = (x - half + 0.5) * step;
+      const py = -(y - half + 0.5) * step; // flip Y: image space -> world space
+
+      points.push({ x: px, y: py, r: r / 255, g: g / 255, b: b / 255 });
+    }
+  }
+
+  return points;
+}
+
+// ---------------- Layer construction / teardown ----------------
+
+function disposePoints(points) {
+  if (!points) return;
+  points.geometry.dispose();
+  points.material.dispose();
+  if (points.parent) points.parent.remove(points);
+}
+
+function rebuildStructuralLayer(layoutName) {
+  disposePoints(structuralField);
+  structuralField = null;
+
+  let gen;
+  switch (layoutName) {
+    case 'vinyl':
+      gen = genVinylGrooves(34, 44, 150);
+      break;
+    case 'starburst':
+      gen = genStarburstRings(9, 140, 40, 210);
+      break;
+    case 'albumArt':
+      gen = genFieldPositions(AMBIENT_SHELL_COUNT);
+      break;
+    case 'field':
+    default:
+      gen = genFieldPositions(FIELD_COUNT);
+      break;
+  }
+
+  structuralBase = gen.positions;
+  structuralNormals = gen.normals;
+  structuralJumpAmp = gen.jumpAmp;
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(structuralBase.slice(), 3));
+
+  const material = new THREE.PointsMaterial({
+    size: 4,
+    map: getSpriteTexture(),
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    color: goldColor.clone()
+  });
+
+  structuralField = new THREE.Points(geo, material);
+  scene.add(structuralField);
+  structuralField.rotation.set(0, 0, 0);
+}
+
+function rebuildAlbumLayer(layoutName, sampledPoints) {
+  disposePoints(albumField);
+  albumField = null;
+  albumBase = null;
+  albumNormals = null;
+  albumJumpAmp = null;
+
+  if (!sampledPoints || sampledPoints.length === 0) return;
+
+  const count = sampledPoints.length;
+  const positions = new Float32Array(count * 3);
+  const colors = new Float32Array(count * 3);
+  const normals = new Float32Array(count * 3);
+  const jumpAmp = new Float32Array(count);
+
+  for (let i = 0; i < count; i++) {
+    const p = sampledPoints[i];
+    positions[i * 3] = p.x;
+    positions[i * 3 + 1] = p.y;
+    positions[i * 3 + 2] = 0;
+
+    colors[i * 3] = p.r;
+    colors[i * 3 + 1] = p.g;
+    colors[i * 3 + 2] = p.b;
+
+    normals[i * 3] = 0;
+    normals[i * 3 + 1] = 0;
+    normals[i * 3 + 2] = 1;
+
+    jumpAmp[i] = layoutName === 'vinyl' ? (1.5 + Math.random() * 7) : (5 + Math.random() * 22);
+  }
+
+  albumBase = positions;
+  albumNormals = normals;
+  albumJumpAmp = jumpAmp;
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(positions.slice(), 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+  const material = new THREE.PointsMaterial({
+    size: layoutName === 'vinyl' ? 3.2 : 4.4,
+    map: getSpriteTexture(),
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    vertexColors: true
+  });
+
+  albumField = new THREE.Points(geo, material);
+  scene.add(albumField);
+  albumField.rotation.set(0, 0, 0);
+}
+
+/**
+ * Switches the active particle layout. For 'albumArt' and 'vinyl', pass the
+ * URL (or data: URI) of the current track's cover art — it gets sampled into
+ * particles. Safe to call with no image (falls back gracefully, e.g. a
+ * vinyl with grooves but no center label).
+ */
+export async function setParticleLayout(layoutName, imageUrl) {
+  currentLayout = layoutName;
+  rebuildStructuralLayer(layoutName);
+
+  if (layoutName !== 'albumArt' && layoutName !== 'vinyl') {
+    rebuildAlbumLayer(null, null);
+    return;
+  }
+
+  if (!imageUrl) {
+    rebuildAlbumLayer(layoutName, null);
+    return;
+  }
+
+  try {
+    const img = await loadImage(imageUrl);
+    const sampled = layoutName === 'vinyl'
+      ? sampleImageToPoints(img, 40, 76, { circleMask: true })
+      : sampleImageToPoints(img, 48, 240, { circleMask: false });
+    // Bail out if the user already switched layouts again while we awaited.
+    if (currentLayout !== layoutName) return;
+    rebuildAlbumLayer(layoutName, sampled);
+  } catch (err) {
+    console.warn('Particle layout: could not build album art particles —', err.message);
+    if (currentLayout === layoutName) rebuildAlbumLayer(layoutName, null);
+  }
+}
+
+export function getParticleLayout() {
+  return currentLayout;
+}
+
+// ---------------- Public setup / render API (unchanged signatures) ----------------
 
 export function initParticles(canvas) {
   renderer3D = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
@@ -39,31 +376,7 @@ export function initParticles(canvas) {
   camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 2000);
   camera.position.z = 600;
 
-  const positions = new Float32Array(PARTICLE_COUNT * 3);
-
-  for (let i = 0; i < PARTICLE_COUNT; i++) {
-    const radius = 250 + Math.random() * 550;
-    const theta = Math.random() * Math.PI * 2;
-    const phi = Math.acos(Math.random() * 2 - 1);
-    positions[i * 3] = radius * Math.sin(phi) * Math.cos(theta);
-    positions[i * 3 + 1] = radius * Math.sin(phi) * Math.sin(theta);
-    positions[i * 3 + 2] = radius * Math.cos(phi);
-  }
-
-  particleGeometry = new THREE.BufferGeometry();
-  particleGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-
-  particleMaterial = new THREE.PointsMaterial({
-    size: 4,
-    map: makeParticleSprite(),
-    transparent: true,
-    depthWrite: false,
-    blending: THREE.AdditiveBlending,
-    color: goldColor.clone()
-  });
-
-  particleField = new THREE.Points(particleGeometry, particleMaterial);
-  scene.add(particleField);
+  rebuildStructuralLayer('field');
 
   cameraControls = new OrbitControls(camera, canvas);
   cameraControls.enableDamping = true;
@@ -88,24 +401,65 @@ export function resizeParticles() {
   camera.updateProjectionMatrix();
 }
 
+function applyJump(points, base, normals, jumpAmp, drive) {
+  if (!points || !base) return;
+  const attr = points.geometry.attributes.position;
+  const arr = attr.array;
+  for (let i = 0; i < jumpAmp.length; i++) {
+    const i3 = i * 3;
+    const amount = drive * jumpAmp[i];
+    arr[i3] = base[i3] + normals[i3] * amount;
+    arr[i3 + 1] = base[i3 + 1] + normals[i3 + 1] * amount;
+    arr[i3 + 2] = base[i3 + 2] + normals[i3 + 2] * amount;
+  }
+  attr.needsUpdate = true;
+}
+
 export function updateParticlesAnimation(bassAvg, trebleAvg, energy, primaryHex, secondaryHex) {
-  if (!cameraControls || !particleMaterial || !camera || !renderer3D || !scene) return;
+  if (!cameraControls || !camera || !renderer3D || !scene) return;
 
   cameraControls.update();
 
-  // Update sizes based on loudness energy
-  particleMaterial.size = 3 + energy * 9;
-
-  // Pulse FOV on bass
-  camera.fov = 60 + bassAvg * 8;
-  camera.updateProjectionMatrix();
-
-  // Update colours live
   if (primaryHex) goldColor.set(primaryHex);
   if (secondaryHex) blueColor.set(secondaryHex);
-
   mixedColor.copy(goldColor).lerp(blueColor, trebleAvg);
-  particleMaterial.color.copy(mixedColor);
+
+  // Beat-pulse detector: fires a decaying "kick" whenever bass spikes well
+  // above its own rolling average — this is what makes particles feel like
+  // they're jumping to the beat rather than just tracking raw volume.
+  smoothedBass += (bassAvg - smoothedBass) * 0.06;
+  if (bassAvg > smoothedBass * 1.35 && bassAvg > 0.12) {
+    beatPulse = 1.0;
+  }
+  beatPulse *= 0.86;
+
+  const jumpDrive = bassAvg * 0.35 + beatPulse * 0.85;
+
+  if (structuralField) {
+    applyJump(structuralField, structuralBase, structuralNormals, structuralJumpAmp, jumpDrive);
+    structuralField.material.color.copy(mixedColor);
+    structuralField.material.size = (currentLayout === 'vinyl' || currentLayout === 'starburst')
+      ? 3 + energy * 6
+      : 3 + energy * 9;
+  }
+
+  if (albumField) {
+    applyJump(albumField, albumBase, albumNormals, albumJumpAmp, jumpDrive);
+  }
+
+  // Spin layouts that should physically rotate.
+  if (currentLayout === 'vinyl') {
+    spinAngle += 0.008 + energy * 0.012;
+    if (structuralField) structuralField.rotation.z = spinAngle;
+    if (albumField) albumField.rotation.z = spinAngle;
+  } else if (currentLayout === 'starburst') {
+    spinAngle += 0.003 + energy * 0.004;
+    if (structuralField) structuralField.rotation.z = spinAngle;
+  }
+
+  // Pulse FOV on bass, same as before.
+  camera.fov = 60 + bassAvg * 8;
+  camera.updateProjectionMatrix();
 
   renderer3D.render(scene, camera);
 }
