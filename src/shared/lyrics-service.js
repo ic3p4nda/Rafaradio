@@ -119,9 +119,9 @@ async function fetchFromLrcLib(title, artist) {
       });
 
       if (!data.ok) {
-      console.log(`LRCLIB returned status ${data.status}. Skipping...`);
-      return null; 
-    }
+        console.log(`LRCLIB returned status ${data.status}. Skipping...`);
+        continue; 
+      }
     
       const json = JSON.parse(await data.text());
       const match = Array.isArray(json) ? json[0] : json;
@@ -162,7 +162,6 @@ async function fetchFromTextyl(title, artist) {
     if (!response.ok) return null;
     const json = await response.json();
     
-    // Convert textyl format into something parseSyncedLyrics can digest or array map
     if (Array.isArray(json)) {
       return json.map(line => ({
         time: line.seconds,
