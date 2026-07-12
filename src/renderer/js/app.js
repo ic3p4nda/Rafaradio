@@ -55,7 +55,9 @@ import {
   blueColor,
   scene,
   camera,
-  renderer3D
+  renderer3D,
+  setParticleLayout,
+  getParticleLayout
 } from './particles.js';
 
 import { 
@@ -100,7 +102,7 @@ let importLikedSongsBtn, importLikedForm, importLikedAuthBtn, importLikedCancel,
 let settingsToggle, settingsPanel, fontSelect, glowColorSelect, textSizeSlider, textSizeVal, bounceSlider, bounceVal;
 let spotlightToggleCheck, discToggleCheck, syncColorsCheck, waveColorSelect, visualizerStyleSelect;
 let particleColor1Select, particleColor2Select, driftSpeedSlider, driftSpeedVal, playbackSpeedSelect, sleepTimerSelect, sleepTimerRemaining, crossfadeToggleCheck;
-let waveformColorGroup, lyricsOverlay, lyricsStatus, lyricsRefresh, beatSyncToggleCheck;
+let waveformColorGroup, lyricsOverlay, lyricsStatus, lyricsRefresh, beatSyncToggleCheck, particleLayoutSelect;
 
 let isVisualizerActive = false;
 let visualizerAnimationId = null;
@@ -219,6 +221,7 @@ export function initApp() {
   syncColorsCheck = document.getElementById('syncColorsCheck');
   waveColorSelect = document.getElementById('waveColorSelect');
   visualizerStyleSelect = document.getElementById('visualizerStyleSelect');
+  particleLayoutSelect = document.getElementById('particleLayoutSelect');
   
   particleColor1Select = document.getElementById('particleColor1Select');
   particleColor2Select = document.getElementById('particleColor2Select');
@@ -235,18 +238,23 @@ export function initApp() {
   lyricsStatus = document.getElementById('lyricsStatus');
   lyricsRefresh = document.getElementById('lyricsRefresh');
   
-  // Load local state & run background preload
+  // Load local state
   loadPlaylistsFromStorage();
   loadLyricsCacheFromStorage();
-  loadPlaySession();
 
   // Create micro canvas inside screen-wrap for retro LCD spectrum
   setupMiniSpectrumCanvas();
 
-  // Setup Three.js Particles scene
+  // Setup Three.js Particles scene BEFORE restoring the play session,
+  // since loadPlaySession() can immediately trigger loadTrack() ->
+  // updateParticlesLayoutArtwork() -> setParticleLayout(), which needs
+  // the particles `scene` to already exist.
   const particleCanvas = document.getElementById('particles');
   initParticles(particleCanvas);
   window.addEventListener('resize', resizeParticles);
+
+  // Now safe to restore/run background preload
+  loadPlaySession();
 
   // Bind settings listeners
   initSettingsUI();
@@ -443,6 +451,7 @@ async function loadTrack(index, autoplay = true) {
 
     if (trackLoadId !== activeTrackLoadId) return;
     await applyLocalMetadata(track);
+    updateParticlesLayoutArtwork();
 
     if (lyricsVisible) {
       fetchAndDisplayLyrics(track, audio, lyricsOverlay, { scene, camera, renderer: renderer3D }, lyricsStatus, updateTrackLyricsBadgeInUI);
@@ -462,6 +471,7 @@ async function loadTrack(index, autoplay = true) {
       discArt.classList.remove('visible');
       coverBackdrop.classList.remove('visible');
     }
+    updateParticlesLayoutArtwork();
 
     let streamPromise = preloadedStreams.get(track.videoId);
     if (!streamPromise) {
@@ -694,6 +704,10 @@ function bindPanelToggles() {
 
     if (nextVis) {
       initLyricsVisualizer(audio, lyricsOverlay, { scene, camera, renderer: renderer3D });
+      if (lyricsVisualizer) {
+        const savedSettings = JSON.parse(localStorage.getItem('lyricsTextSettings') || '{}');
+        lyricsVisualizer.setLayoutContext(savedSettings.particleLayout || 'field');
+      }
       if (playlist[currentIndex]) {
         await fetchAndDisplayLyrics(playlist[currentIndex], audio, lyricsOverlay, { scene, camera, renderer: renderer3D }, lyricsStatus, updateTrackLyricsBadgeInUI);
       }
@@ -1413,6 +1427,7 @@ function initSettingsUI() {
     syncColors: true,
     waveColor: 'cyan',
     visualizerStyle: 'mirrored',
+    particleLayout: 'field',
     particleColorPrimary: 'gold',
     particleColorSecondary: 'blue',
     driftSpeed: 1.0,
@@ -1432,6 +1447,10 @@ function initSettingsUI() {
   bounceSlider.value = saved.bounceIntensity;
   bounceVal.textContent = `${parseFloat(saved.bounceIntensity).toFixed(1)}x`;
   spotlightToggleCheck.checked = !!saved.showSpotlight;
+
+  if (particleLayoutSelect) {
+    particleLayoutSelect.value = saved.particleLayout || 'field';
+  }
 
   if (beatSyncToggleCheck) {
     beatSyncToggleCheck.checked = !!saved.beatSync;
@@ -1467,6 +1486,7 @@ function initSettingsUI() {
   }
 
   applyGlowAndColors(saved);
+  updateParticlesLayoutArtwork();
 }
 
 function bindSettingsUIListeners() {
@@ -1474,7 +1494,7 @@ function bindSettingsUIListeners() {
     fontSelect, glowColorSelect, textSizeSlider, bounceSlider, spotlightToggleCheck,
     beatSyncToggleCheck, discToggleCheck, syncColorsCheck, waveColorSelect, visualizerStyleSelect,
     particleColor1Select, particleColor2Select, driftSpeedSlider, playbackSpeedSelect,
-    crossfadeToggleCheck
+    crossfadeToggleCheck, particleLayoutSelect
   ];
   settingsInputs.forEach(el => {
     if (el) el.addEventListener('change', onSettingsChanged);
@@ -1490,6 +1510,20 @@ function bindSettingsUIListeners() {
       triggerSleepTimer(parseInt(sleepTimerSelect.value));
     });
   }
+
+  // Settings tabs switcher
+  const tabBtns = document.querySelectorAll('.settings-tab-btn');
+  const tabPanels = document.querySelectorAll('.settings-tab-panel');
+  tabBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const targetTab = btn.getAttribute('data-tab');
+      tabBtns.forEach(b => b.classList.toggle('active', b === btn));
+      tabPanels.forEach(panel => {
+        const panelTab = panel.getAttribute('data-tab-panel');
+        panel.classList.toggle('active', panelTab === targetTab);
+      });
+    });
+  });
 }
 
 function triggerSleepTimer(minutes) {
@@ -1539,7 +1573,36 @@ function applyGlowAndColors(saved) {
   }
 }
 
+async function updateParticlesLayoutArtwork() {
+  const currentSavedSettings = JSON.parse(localStorage.getItem('lyricsTextSettings') || '{}');
+  const layout = currentSavedSettings.particleLayout || 'field';
+  const track = playlist[currentIndex];
+  
+  let imageUrl = null;
+  if (track) {
+    if (track.type === 'local') {
+      imageUrl = discArt.classList.contains('visible') ? discArt.src : null;
+    } else {
+      imageUrl = track.thumbnail || null;
+    }
+  }
+  
+  if (lyricsVisualizer) {
+    lyricsVisualizer.setLayoutContext(layout);
+  }
+
+  await setParticleLayout(layout, imageUrl);
+}
+
 function onSettingsChanged() {
+  const lastSettingsStr = localStorage.getItem('lyricsTextSettings');
+  let oldLayout = 'field';
+  if (lastSettingsStr) {
+    try {
+      oldLayout = JSON.parse(lastSettingsStr).particleLayout || 'field';
+    } catch (e) {}
+  }
+
   const settings = {
     fontFamily: fontSelect.value,
     glowColor: glowColorSelect.value,
@@ -1551,6 +1614,7 @@ function onSettingsChanged() {
     syncColors: syncColorsCheck ? syncColorsCheck.checked : true,
     waveColor: waveColorSelect ? waveColorSelect.value : 'cyan',
     visualizerStyle: visualizerStyleSelect ? visualizerStyleSelect.value : 'mirrored',
+    particleLayout: particleLayoutSelect ? particleLayoutSelect.value : 'field',
     particleColorPrimary: particleColor1Select ? particleColor1Select.value : 'gold',
     particleColorSecondary: particleColor2Select ? particleColor2Select.value : 'blue',
     driftSpeed: driftSpeedSlider ? parseFloat(driftSpeedSlider.value) : 1.0,
@@ -1583,6 +1647,10 @@ function onSettingsChanged() {
   }
 
   applyGlowAndColors(settings);
+
+  if (oldLayout !== settings.particleLayout) {
+    updateParticlesLayoutArtwork();
+  }
 
   if (audio) {
     const rate = parseFloat(settings.playbackSpeed);

@@ -2173,3 +2173,49 @@ input[type="range"]:focus-visible,
     scroll-behavior: auto !important;
   }
 }
+
+/* ---------- Settings Tabs Styling ---------- */
+.settings-tabs {
+  display: flex;
+  background: rgba(0, 0, 0, 0.2);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 0 10px;
+  gap: 4px;
+}
+
+.settings-tab-btn {
+  flex: 1;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-dim);
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 12px 4px;
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s;
+  text-align: center;
+}
+
+.settings-tab-btn:hover {
+  color: var(--text);
+}
+
+.settings-tab-btn.active {
+  color: var(--gold);
+  border-bottom-color: var(--gold);
+}
+
+/* Hide tab panels by default and show the active one */
+.settings-tab-panel {
+  display: none !important;
+}
+
+.settings-tab-panel.active {
+  display: flex !important;
+  flex-direction: column;
+  gap: 20px;
+}

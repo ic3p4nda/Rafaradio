@@ -30,8 +30,14 @@ export function normalizeLyricLines(lyricsArray) {
 // How many lines of context to show above/below the current line.
 // Total visible lines on stage = VISIBLE_RADIUS * 2 + 1.
 const VISIBLE_RADIUS = 2;
-const SLOT_SPACING = 15; // vertical distance between stacked lines, world units
+const SLOT_SPACING = 18; // vertical distance between stacked lines, world units
 const STAGE_ANCHOR = new THREE.Vector3(0, 0, 0);
+
+// How far the whole lyrics stage slides sideways when the particle layout
+// is something with a "subject" sitting at the center (vinyl, starburst,
+// album-art square) that the text would otherwise sit on top of. The
+// cosmic cloud ('field') has nothing to dodge, so lyrics stay centered.
+const SIDE_OFFSET_X = 260;
 
 // Camera-zoom-responsive text sizing. At REFERENCE_DISTANCE the text is
 // drawn at its normal base size; the closer the camera gets, the bigger it
@@ -81,6 +87,14 @@ class LyricsVisualizer {
     this.group = null;
     this.spotlight = null;
     this._resizeHandler = null;
+
+    // Which particle layout we're currently sharing the scene with, and the
+    // x offset that follows from it (0 = centered, for the cosmic cloud;
+    // SIDE_OFFSET_X = pushed aside, for anything with a centered "subject"
+    // like the vinyl or the album-art square). group.position.x eases
+    // toward this every frame in animate(), same as the bass-bounce on Y.
+    this.currentLayoutName = 'field';
+    this.targetOffsetX = 0;
 
     this.init();
   }
@@ -201,9 +215,14 @@ class LyricsVisualizer {
   // the canvas is always sized to fit whatever ends up drawn on it.
   buildLineTexture(text, { current = false } = {}) {
     const scale = this.textSettings.textSize;
-    const maxContentWidth = (current ? 1500 : 1150) * Math.max(1, scale);
+    const sideMode = this.currentLayoutName && this.currentLayoutName !== 'field';
+    // Narrower wrap box when parked at the side, so long lines stack
+    // vertically instead of stretching back across the layout in the center.
+    const maxContentWidth = (sideMode
+      ? (current ? 950 : 760)
+      : (current ? 1500 : 1150)) * Math.max(1, scale);
     const maxLines = current ? 2 : 1;
-    const minFontSize = (current ? 44 : 28) * scale;
+    const minFontSize = (current ? 54 : 34) * scale;
     const paddingX = 60;
     const paddingY = 24;
 
@@ -211,7 +230,7 @@ class LyricsVisualizer {
     const mctx = measureCanvas.getContext('2d');
 
     const fontFamily = this.textSettings.fontFamily;
-    let fontSize = (current ? 92 : 56) * scale;
+    let fontSize = (current ? 112 : 68) * scale;
     let lines = [text];
 
     // Shrink the font until the text wraps into at most maxLines, or we
@@ -376,7 +395,7 @@ class LyricsVisualizer {
     });
     const sprite = new THREE.Sprite(material);
 
-    const baseHeight = isCurrent ? 26 : 15.5;
+    const baseHeight = isCurrent ? 32 : 19;
     sprite.userData = {
       index,
       isCurrentTexture: isCurrent,
@@ -468,13 +487,33 @@ class LyricsVisualizer {
         sprite.userData.targetOpacity = 0;
       }
       
-      sprite.userData.targetHeight = isCurrent ? 26 : 15.5;
+      sprite.userData.targetHeight = isCurrent ? 32 : 19;
       sprite.userData.isCurrent = isCurrent;
     }
   }
 
   updateBass(bassAvg) {
     this.bassAvg = bassAvg;
+  }
+
+  // Call this whenever the particle layout changes (field/vinyl/starburst/
+  // albumArt). Centers the lyrics stage for the cosmic cloud, and slides it
+  // off to the side for anything that has a centered "subject" the text
+  // would otherwise sit on top of. Also rebuilds line textures so wrap
+  // width adjusts to the new (wider/narrower) available space.
+  setLayoutContext(layoutName) {
+    if (this.currentLayoutName === layoutName) return;
+    this.currentLayoutName = layoutName;
+    this.targetOffsetX = (layoutName && layoutName !== 'field') ? SIDE_OFFSET_X : 0;
+
+    for (const [i, sprite] of Array.from(this.lineMeshes.entries())) {
+      const isCurrent = i === this.currentLyricIndex;
+      const { texture, aspect } = this.buildLineTexture(this.lyricsLines[i].text, { current: isCurrent });
+      sprite.material.map?.dispose();
+      sprite.material.map = texture;
+      sprite.material.needsUpdate = true;
+      sprite.userData.aspect = aspect;
+    }
   }
 
   updateSettings(newSettings) {
@@ -549,6 +588,12 @@ class LyricsVisualizer {
     // STAGE_ANCHOR is (0, 0, 0). This models a real physics subwoofer rattle.
     const targetGroupY = STAGE_ANCHOR.y + bass * 14.0 * bounceMult;
     this.group.position.y += (targetGroupY - this.group.position.y) * 0.25;
+
+    // Slide sideways to dodge whatever's sitting in the center for the
+    // current particle layout (vinyl label, starburst rings, album-art
+    // square) — eased the same way as the bounce so it glides rather than
+    // snapping when the layout is switched mid-song.
+    this.group.position.x += (this.targetOffsetX - this.group.position.x) * 0.08;
 
     for (const sprite of this.lineMeshes.values()) {
       const ud = sprite.userData;

@@ -50,17 +50,22 @@ const AMBIENT_SHELL_COUNT = 350; // sparse background shell used behind albumArt
 let sharedSpriteTexture = null;
 function getSpriteTexture() {
   if (sharedSpriteTexture) return sharedSpriteTexture;
-  const size = 64;
+  // Higher-res canvas + a tighter, brighter core keeps individual particles
+  // crisp instead of dissolving into a soft blur once they're packed dense
+  // (e.g. the vinyl label), while still tapering off softly at the edges.
+  const size = 128;
   const spriteCanvas = document.createElement('canvas');
   spriteCanvas.width = spriteCanvas.height = size;
   const sctx = spriteCanvas.getContext('2d');
   const grad = sctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
   grad.addColorStop(0, 'rgba(255,255,255,1)');
-  grad.addColorStop(0.4, 'rgba(255,255,255,0.55)');
+  grad.addColorStop(0.25, 'rgba(255,255,255,0.95)');
+  grad.addColorStop(0.55, 'rgba(255,255,255,0.35)');
   grad.addColorStop(1, 'rgba(255,255,255,0)');
   sctx.fillStyle = grad;
   sctx.fillRect(0, 0, size, size);
   sharedSpriteTexture = new THREE.CanvasTexture(spriteCanvas);
+  sharedSpriteTexture.anisotropy = 4;
   return sharedSpriteTexture;
 }
 
@@ -162,7 +167,13 @@ function loadImage(url) {
     img.crossOrigin = 'anonymous';
     img.onload = () => resolve(img);
     img.onerror = () => reject(new Error('Image failed to load'));
-    img.src = url;
+    
+    // Proxy external URLs through server.js to allow pixel reading (CORS)
+    if (url.startsWith('http') && !url.includes(window.location.host)) {
+      img.src = `/api/proxy-image?url=${encodeURIComponent(url)}`;
+    } else {
+      img.src = url;
+    }
   });
 }
 
@@ -314,7 +325,10 @@ function rebuildAlbumLayer(layoutName, sampledPoints) {
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
   const material = new THREE.PointsMaterial({
-    size: layoutName === 'vinyl' ? 3.2 : 4.4,
+    // Vinyl label is now ~4x denser (72x72 vs 40x40 grid), so each point
+    // needs to be smaller to actually resolve detail instead of just
+    // overlapping into a blob. Album-art square stays as-is, just denser.
+    size: layoutName === 'vinyl' ? 2.1 : 4.0,
     map: getSpriteTexture(),
     transparent: true,
     depthWrite: false,
@@ -350,8 +364,12 @@ export async function setParticleLayout(layoutName, imageUrl) {
   try {
     const img = await loadImage(imageUrl);
     const sampled = layoutName === 'vinyl'
-      ? sampleImageToPoints(img, 40, 76, { circleMask: true })
-      : sampleImageToPoints(img, 48, 240, { circleMask: false });
+      // gridSize 72 (up from 40) roughly doubles linear resolution -> ~4x
+      // the sample points for a much sharper label. planeSize 86 (up from
+      // 76) grows the label so its radius (~43) reaches right up to where
+      // the groove rings start (44), instead of floating small in the middle.
+      ? sampleImageToPoints(img, 72, 86, { circleMask: true })
+      : sampleImageToPoints(img, 64, 240, { circleMask: false });
     // Bail out if the user already switched layouts again while we awaited.
     if (currentLayout !== layoutName) return;
     rebuildAlbumLayer(layoutName, sampled);
