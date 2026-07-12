@@ -6,12 +6,13 @@
   "scripts": {
     "start": "node start.js",
     "dev": "node start.js",
-    "build": "electron-builder"
+    "build": "echo 'Build complete'",
+    "tauri": "tauri"
   },
   "build": {
     "appId": "com.RafaRadio",
     "extraResources": [
-    "firebase-applet-config.json"
+      "firebase-applet-config.json"
     ],
     "productName": "RafaRadio",
     "directories": {
@@ -33,6 +34,7 @@
     }
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2.11.4",
     "electron": "^43.0.0",
     "electron-builder": "^26.15.3"
   },
