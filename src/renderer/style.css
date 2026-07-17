@@ -1,14 +1,129 @@
 @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Inter:wght@400;500;600&display=swap');
 
 :root {
-  --void: #030307;
-  --panel: rgba(255, 255, 255, 0.08); /* Glossy frosted glass */
-  --panel-solid: rgba(10, 12, 22, 0.55);
-  --border: rgba(255, 255, 255, 0.2); /* Sleek translucent border */
-  --gold: #fac900;
-  --blue: #00f0ff; /* Electric neon cyan */
-  --text: #ffffff;
-  --text-dim: rgba(255, 255, 255, 0.65);
+  --void: #14121a;
+  --surface: #1d1b23;
+  --surface-container: #262430;
+  --surface-container-high: #2f2d3a;
+  --primary: #d0bcff;      /* Material You tonal purple */
+  --on-primary: #381e72;
+  --secondary: #ccc2dc;
+  --border: rgba(255,255,255,0.08);
+  --text: #e6e0e9;
+  --text-dim: rgba(230, 224, 233, 0.6);
+  --radius-lg: 24px;
+  --radius-md: 16px;
+  --radius-sm: 12px;
+}
+
+body {
+  background: var(--void);
+}
+
+.bottom-nav {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  height: 72px;
+  display: flex;
+  background: var(--surface-container);
+  border-top: 1px solid var(--border);
+  z-index: 50;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.nav-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-family: 'Inter', sans-serif;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.nav-item .nav-icon {
+  padding: 4px 14px;
+  border-radius: 16px;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.nav-item.active {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.nav-item.active .nav-icon {
+  background: var(--primary);
+  color: var(--on-primary);
+}
+
+/* Metrolist-style track card (replaces .metrolist-table rows) */
+.track-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 16px;
+  border-radius: var(--radius-sm);
+  transition: background 0.15s ease;
+  cursor: pointer;
+}
+
+.track-card:hover,
+.track-card:active {
+  background: var(--surface-container-high);
+}
+
+.track-card .art {
+  width: 52px;
+  height: 52px;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  background: var(--surface-container-high);
+  flex-shrink: 0;
+}
+
+.track-card .meta {
+  min-width: 0;
+  flex: 1;
+}
+
+.track-card .title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.track-card .subtitle {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+/* Mini-player bar docked above the bottom nav, Metrolist-style */
+.deck {
+  position: fixed;
+  left: 12px; right: 12px;
+  bottom: 84px; /* clears the bottom nav */
+  height: 64px;
+  border-radius: var(--radius-lg);
+  background: var(--surface-container-high);
+  border: none;
+  padding: 8px 16px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+}
+
+.ctrl-btn-main {
+  background: var(--primary);
+  color: var(--on-primary);
+  border: none;
 }
 
 /* Glass background blobs */

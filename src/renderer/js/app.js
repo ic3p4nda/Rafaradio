@@ -103,6 +103,7 @@ let settingsToggle, settingsPanel, fontSelect, glowColorSelect, textSizeSlider, 
 let spotlightToggleCheck, discToggleCheck, syncColorsCheck, waveColorSelect, visualizerStyleSelect;
 let particleColor1Select, particleColor2Select, driftSpeedSlider, driftSpeedVal, playbackSpeedSelect, sleepTimerSelect, sleepTimerRemaining, crossfadeToggleCheck;
 let waveformColorGroup, lyricsOverlay, lyricsStatus, lyricsRefresh, lyricsToggle, beatSyncToggleCheck, particleLayoutSelect;
+let createPlaylistBtn, likeBtn;
 
 let isVisualizerActive = false;
 let visualizerAnimationId = null;
@@ -158,7 +159,7 @@ export function initApp() {
   closeBtn = document.getElementById('closeBtn');
   titleMiniPlayerBtn = document.getElementById('titleMiniPlayerBtn');
   miniPlayerToggleBtn = document.getElementById('miniPlayerToggleBtn');
-  
+
   waveToggleBtn = document.getElementById('waveToggleBtn');
   closeWaveformBtn = document.getElementById('closeWaveformBtn');
   waveformPanel = document.getElementById('waveformPanel');
@@ -179,6 +180,9 @@ export function initApp() {
   playlistsListHeader = document.getElementById('playlistsListHeader');
   playlistsListEl = document.getElementById('playlistsList');
   
+  createPlaylistBtn = document.getElementById('createPlaylistBtn');
+  likeBtn = document.getElementById('likeBtn');
+
   playlistDetailView = document.getElementById('playlistDetailView');
   playlistDetailHeader = document.getElementById('playlistDetailHeader');
   playlistDetailTitle = document.getElementById('playlistDetailTitle');
