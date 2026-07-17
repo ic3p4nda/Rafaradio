@@ -33,3 +33,6 @@ npm-debug.log*
 .env.local
 temp/
 cache/
+
+src-taurin/target/
+src-taurin/target/*

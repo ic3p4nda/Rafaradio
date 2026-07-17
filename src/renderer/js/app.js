@@ -102,7 +102,7 @@ let importLikedSongsBtn, importLikedForm, importLikedAuthBtn, importLikedCancel,
 let settingsToggle, settingsPanel, fontSelect, glowColorSelect, textSizeSlider, textSizeVal, bounceSlider, bounceVal;
 let spotlightToggleCheck, discToggleCheck, syncColorsCheck, waveColorSelect, visualizerStyleSelect;
 let particleColor1Select, particleColor2Select, driftSpeedSlider, driftSpeedVal, playbackSpeedSelect, sleepTimerSelect, sleepTimerRemaining, crossfadeToggleCheck;
-let waveformColorGroup, lyricsOverlay, lyricsStatus, lyricsRefresh, beatSyncToggleCheck, particleLayoutSelect;
+let waveformColorGroup, lyricsOverlay, lyricsStatus, lyricsRefresh, lyricsToggle, beatSyncToggleCheck, particleLayoutSelect;
 
 let isVisualizerActive = false;
 let visualizerAnimationId = null;
@@ -237,6 +237,7 @@ export function initApp() {
   lyricsOverlay = document.getElementById('lyricsOverlay');
   lyricsStatus = document.getElementById('lyricsStatus');
   lyricsRefresh = document.getElementById('lyricsRefresh');
+  lyricsToggle = document.getElementById('lyricsToggle');
   
   // Load local state
   loadPlaylistsFromStorage();
@@ -421,7 +422,7 @@ async function loadTrack(index, autoplay = true) {
   if (lyricsVisualizer) {
     lyricsVisualizer.displayLyrics([]);
   }
-  lyricsStatus.textContent = 'No lyrics loaded';
+  if (lyricsStatus) lyricsStatus.textContent = 'No lyrics loaded';
 
   preloadNextTracks(currentIndex);
 
@@ -515,14 +516,54 @@ async function loadTrack(index, autoplay = true) {
   }
 }
 
+function updateSidebarNowPlayingUI(track) {
+  const sTitle = document.getElementById('sidebarTitle');
+  const sArtist = document.getElementById('sidebarArtist');
+  const sCover = document.getElementById('sidebarCover');
+  const sPlaceholder = document.getElementById('sidebarNpPlaceholder');
+  const sPlayBtn = document.getElementById('sidebarNpPlayBtn');
+  
+  if (sTitle) sTitle.textContent = track ? (track.name || 'Unknown Track') : 'No track loaded';
+  if (sArtist) sArtist.textContent = track ? (track.artist || 'Unknown Artist') : '';
+  
+  if (track) {
+    const thumb = track.thumbnail || null;
+    if (thumb) {
+      if (sCover) {
+        sCover.src = thumb;
+        sCover.style.display = 'block';
+      }
+      if (sPlaceholder) sPlaceholder.style.display = 'none';
+    } else if (sCover && sCover.src && sCover.src.startsWith('data:')) {
+      sCover.style.display = 'block';
+      if (sPlaceholder) sPlaceholder.style.display = 'none';
+    } else {
+      if (sCover) sCover.style.display = 'none';
+      if (sPlaceholder) sPlaceholder.style.display = 'flex';
+    }
+    
+    if (sPlayBtn) {
+      sPlayBtn.innerHTML = audio.paused ? 
+        `<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>` :
+        `<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>`;
+    }
+  } else {
+    if (sCover) sCover.style.display = 'none';
+    if (sPlaceholder) sPlaceholder.style.display = 'flex';
+    if (sPlayBtn) sPlayBtn.innerHTML = `<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>`;
+  }
+}
+
 function startPlaybackUI() {
   playBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>`;
   disc.classList.add('spinning');
+  updateSidebarNowPlayingUI(playlist[currentIndex]);
 }
 
 function stopPlaybackUI() {
   playBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>`;
   disc.classList.remove('spinning');
+  updateSidebarNowPlayingUI(playlist[currentIndex]);
 }
 
 function playNextTrack(autoEnd = false) {
@@ -620,15 +661,26 @@ async function applyLocalMetadata(track) {
   trackTitle.textContent = meta.title || track.name;
   trackArtist.textContent = meta.artist || '';
 
+  const sCover = document.getElementById('sidebarCover');
+  const sPlaceholder = document.getElementById('sidebarNpPlaceholder');
+
   if (meta.cover) {
     discArt.src = meta.cover;
     discArt.classList.add('visible');
     coverBackdrop.style.backgroundImage = `url("${meta.cover}")`;
     coverBackdrop.classList.add('visible');
+    if (sCover) {
+      sCover.src = meta.cover;
+      sCover.style.display = 'block';
+    }
+    if (sPlaceholder) sPlaceholder.style.display = 'none';
   } else {
     discArt.classList.remove('visible');
     coverBackdrop.classList.remove('visible');
+    if (sCover) sCover.style.display = 'none';
+    if (sPlaceholder) sPlaceholder.style.display = 'flex';
   }
+  updateSidebarNowPlayingUI(track);
 }
 
 function preloadNextTracks(currIdx) {
@@ -670,69 +722,152 @@ function updateTrackLyricsBadgeInUI(track, state) {
 
 // ---------------- PANEL TOGGLE AND VIEW SWITCHING ----------------
 function bindPanelToggles() {
-  cloudToggle.addEventListener('click', () => {
-    playTickSound(audioCtx);
-    const isOpen = cloudPanel.classList.contains('open');
-    closeAllPanelsExcept(isOpen ? null : 'cloud');
-    cloudPanel.classList.toggle('open', !isOpen);
-    cloudToggle.classList.toggle('active', !isOpen);
-    if (!isOpen) cloudSearchInput.focus();
-  });
+  const tabs = document.querySelectorAll('.sidebar-tab');
+  tabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      playTickSound(audioCtx);
+      tabs.forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
 
-  playlistToggle.addEventListener('click', () => {
-    playTickSound(audioCtx);
-    const isOpen = playlistPanel.classList.contains('open');
-    closeAllPanelsExcept(isOpen ? null : 'playlist');
-    playlistPanel.classList.toggle('open', !isOpen);
-    playlistToggle.classList.toggle('active', !isOpen);
-    if (!isOpen) renderPlaylist();
-  });
+      const targetTab = tab.getAttribute('data-tab');
+      const panels = {
+        home: document.getElementById('homePanel'),
+        search: cloudPanel,
+        playlist: playlistPanel,
+        settings: settingsPanel
+      };
 
-  settingsToggle.addEventListener('click', () => {
-    playTickSound(audioCtx);
-    const isOpen = settingsPanel.classList.contains('open');
-    closeAllPanelsExcept(isOpen ? null : 'settings');
-    settingsPanel.classList.toggle('open', !isOpen);
-    settingsToggle.classList.toggle('active', !isOpen);
-  });
+      Object.entries(panels).forEach(([key, panel]) => {
+        if (panel) {
+          if (key === targetTab) {
+            panel.classList.add('active');
+          } else {
+            panel.classList.remove('active');
+          }
+        }
+      });
 
-  lyricsToggle.addEventListener('click', async () => {
-    playTickSound(audioCtx);
-    const nextVis = !lyricsVisible;
-    setLyricsVisible(nextVis);
-    lyricsToggle.classList.toggle('active', nextVis);
-
-    if (nextVis) {
-      initLyricsVisualizer(audio, lyricsOverlay, { scene, camera, renderer: renderer3D });
-      if (lyricsVisualizer) {
-        const savedSettings = JSON.parse(localStorage.getItem('lyricsTextSettings') || '{}');
-        lyricsVisualizer.setLayoutContext(savedSettings.particleLayout || 'field');
+      if (targetTab === 'search') {
+        if (cloudSearchInput) cloudSearchInput.focus();
+      } else if (targetTab === 'playlist') {
+        renderPlaylist();
       }
-      if (playlist[currentIndex]) {
-        await fetchAndDisplayLyrics(playlist[currentIndex], audio, lyricsOverlay, { scene, camera, renderer: renderer3D }, lyricsStatus, updateTrackLyricsBadgeInUI);
-      }
-    }
+    });
   });
 
-  lyricsRefresh.addEventListener('click', async () => {
-    playTickSound(audioCtx);
-    if (!playlist[currentIndex]) return;
-    await fetchAndDisplayLyrics(playlist[currentIndex], audio, lyricsOverlay, { scene, camera, renderer: renderer3D }, lyricsStatus, updateTrackLyricsBadgeInUI);
-  });
+  // Sidebar Now Playing Play Button Toggle
+  const sPlayBtn = document.getElementById('sidebarNpPlayBtn');
+  if (sPlayBtn) {
+    sPlayBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      playTickSound(audioCtx);
+      if (!audio.src) return;
+      try {
+        if (audio.paused) {
+          await playWithFade(volumeBar.value, crossfadeToggleCheck?.checked !== false);
+          startPlaybackUI();
+        } else {
+          pauseWithFade(volumeBar.value, crossfadeToggleCheck?.checked !== false);
+          stopPlaybackUI();
+        }
+      } catch (err) {
+        console.warn('Sidebar play toggle failed:', err);
+        stopPlaybackUI();
+      }
+    });
+  }
+
+  // Now Playing Stage Mode Toggle
+  const enterStageBtn = document.getElementById('enterStageBtn');
+  const exitStageBtn = document.getElementById('exitStageBtn');
+  const appContainer = document.querySelector('.app');
+
+  if (enterStageBtn) {
+    enterStageBtn.addEventListener('click', () => {
+      playTickSound(audioCtx);
+      if (appContainer) {
+        appContainer.classList.add('stage-mode-active');
+        setTimeout(() => {
+          resizeParticles();
+          if (cameraControls) cameraControls.handleResize();
+        }, 50);
+      }
+    });
+  }
+
+  if (exitStageBtn) {
+    exitStageBtn.addEventListener('click', () => {
+      playTickSound(audioCtx);
+      if (appContainer) {
+        appContainer.classList.remove('stage-mode-active');
+        setTimeout(() => {
+          resizeParticles();
+          if (cameraControls) cameraControls.handleResize();
+        }, 50);
+      }
+    });
+  }
+
+  // Lyrics Overlay Toggle and Refresh Controls
+  if (lyricsToggle) {
+    lyricsToggle.addEventListener('click', async () => {
+      playTickSound(audioCtx);
+      const nextVis = !lyricsVisible;
+      setLyricsVisible(nextVis);
+      lyricsToggle.classList.toggle('active', nextVis);
+
+      if (nextVis) {
+        initLyricsVisualizer(audio, lyricsOverlay, { scene, camera, renderer: renderer3D });
+        if (lyricsVisualizer) {
+          const savedSettings = JSON.parse(localStorage.getItem('lyricsTextSettings') || '{}');
+          lyricsVisualizer.setLayoutContext(savedSettings.particleLayout || 'field');
+        }
+        if (playlist[currentIndex]) {
+          await fetchAndDisplayLyrics(playlist[currentIndex], audio, lyricsOverlay, { scene, camera, renderer: renderer3D }, lyricsStatus, updateTrackLyricsBadgeInUI);
+        }
+      }
+    });
+  }
+
+  if (lyricsRefresh) {
+    lyricsRefresh.addEventListener('click', async () => {
+      playTickSound(audioCtx);
+      if (!playlist[currentIndex]) return;
+      await fetchAndDisplayLyrics(playlist[currentIndex], audio, lyricsOverlay, { scene, camera, renderer: renderer3D }, lyricsStatus, updateTrackLyricsBadgeInUI);
+    });
+  }
 }
 
 function closeAllPanelsExcept(activePanel) {
-  if (activePanel !== 'cloud') {
-    cloudPanel.classList.remove('open');
-    cloudToggle.classList.remove('active');
-  }
-  if (activePanel !== 'playlist') {
-    playlistPanel.classList.remove('open');
-    playlistToggle.classList.remove('active');
-  }
-  if (activePanel !== 'settings') {
-    settingsPanel.classList.remove('open');
-    settingsToggle.classList.remove('active');
+  const tabs = document.querySelectorAll('.sidebar-tab');
+  let targetTab = null;
+  if (activePanel === 'cloud') targetTab = 'search';
+  else if (activePanel === 'playlist') targetTab = 'playlist';
+  else if (activePanel === 'settings') targetTab = 'settings';
+  else if (activePanel === null) targetTab = 'home';
+
+  tabs.forEach(tab => {
+    const isTarget = tab.getAttribute('data-tab') === targetTab;
+    tab.classList.toggle('active', isTarget);
+  });
+
+  const panels = {
+    home: document.getElementById('homePanel'),
+    search: cloudPanel,
+    playlist: playlistPanel,
+    settings: settingsPanel
+  };
+
+  Object.entries(panels).forEach(([key, panel]) => {
+    if (panel) {
+      panel.classList.toggle('active', key === targetTab);
+    }
+  });
+
+  if (targetTab === 'search') {
+    if (cloudSearchInput) cloudSearchInput.focus();
+  } else if (targetTab === 'playlist') {
+    renderPlaylist();
   }
 }
 

@@ -3,9 +3,10 @@
   "version": "0.1.0",
   "identifier": "com.rafaradio.app",
   "build": {
-    "beforeDevCommand": "npm run dev",
+    "beforeDevCommand": "npm run tauri:frontend",
     "beforeBuildCommand": "npm run build",
-    "frontendDist": "../dist"
+    "frontendDist": "../src/renderer",
+    "devUrl": "http://localhost:3000"
   },
   "app": {
     "windows": [
@@ -19,7 +20,7 @@
     ],
     "security": {
       "capabilities": [
-        "core:default"
+        "default"
       ]
     }
   },
